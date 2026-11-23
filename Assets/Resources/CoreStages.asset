@@ -84,7 +84,7 @@ MonoBehaviour:
       techNodeId: 
     - type: 5
       item: {fileID: 0}
-      amount: 12
+      amount: 20
       needsPower: 0
       techNodeId: 
     - type: 3
@@ -115,10 +115,10 @@ MonoBehaviour:
       amount: 1
       needsPower: 0
       techNodeId: 
-    - type: 0
-      item: {fileID: 11400000, guid: e3cc4a6e3733f5644aaaa3e8fdd6c29c, type: 2}
-      amount: 36
-      needsPower: 1
+    - type: 6
+      item: {fileID: 0}
+      amount: 1
+      needsPower: 0
       techNodeId: 
     - type: 1
       item: {fileID: 0}
@@ -127,7 +127,7 @@ MonoBehaviour:
       techNodeId: 
     - type: 5
       item: {fileID: 0}
-      amount: 30
+      amount: 50
       needsPower: 0
       techNodeId: 
     - type: 3
@@ -153,10 +153,15 @@ MonoBehaviour:
       amount: 1
       needsPower: 1
       techNodeId: 
-    - type: 0
-      item: {fileID: 11400000, guid: e3cc4a6e3733f5644aaaa3e8fdd6c29c, type: 2}
-      amount: 60
-      needsPower: 1
+    - type: 6
+      item: {fileID: 0}
+      amount: 2
+      needsPower: 0
+      techNodeId: 
+    - type: 7
+      item: {fileID: 0}
+      amount: 1
+      needsPower: 0
       techNodeId: 
     - type: 1
       item: {fileID: 0}
@@ -165,7 +170,7 @@ MonoBehaviour:
       techNodeId: 
     - type: 5
       item: {fileID: 0}
-      amount: 50
+      amount: 90
       needsPower: 0
       techNodeId: 
     - type: 3
@@ -191,10 +196,15 @@ MonoBehaviour:
       amount: 2
       needsPower: 1
       techNodeId: 
-    - type: 0
-      item: {fileID: 11400000, guid: e3cc4a6e3733f5644aaaa3e8fdd6c29c, type: 2}
-      amount: 80
-      needsPower: 1
+    - type: 6
+      item: {fileID: 0}
+      amount: 4
+      needsPower: 0
+      techNodeId: 
+    - type: 7
+      item: {fileID: 0}
+      amount: 2
+      needsPower: 0
       techNodeId: 
     - type: 1
       item: {fileID: 0}
@@ -203,7 +213,7 @@ MonoBehaviour:
       techNodeId: 
     - type: 5
       item: {fileID: 0}
-      amount: 100
+      amount: 150
       needsPower: 0
       techNodeId: 
     - type: 3
@@ -225,10 +235,15 @@ MonoBehaviour:
       amount: 1
       needsPower: 1
       techNodeId: 
-    - type: 0
-      item: {fileID: 11400000, guid: e3cc4a6e3733f5644aaaa3e8fdd6c29c, type: 2}
-      amount: 100
-      needsPower: 1
+    - type: 6
+      item: {fileID: 0}
+      amount: 6
+      needsPower: 0
+      techNodeId: 
+    - type: 7
+      item: {fileID: 0}
+      amount: 3
+      needsPower: 0
       techNodeId: 
     - type: 1
       item: {fileID: 0}
@@ -237,7 +252,7 @@ MonoBehaviour:
       techNodeId: 
     - type: 5
       item: {fileID: 0}
-      amount: 150
+      amount: 220
       needsPower: 0
       techNodeId: 
     - type: 3

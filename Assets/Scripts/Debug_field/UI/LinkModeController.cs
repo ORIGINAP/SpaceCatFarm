@@ -64,12 +64,12 @@ public class LinkModeController : MonoBehaviour
         var gm = GridManager.Instance;
         float cs = gm != null ? gm.CellSize : 1f;
         var size = from.FootprintMax - from.FootprintMin + Vector2Int.one;
-        float radius = (LinkRules.MaxDistanceCells + Mathf.Max(size.x, size.y) * 0.5f) * cs;
         if (rangeRoot != null) Destroy(rangeRoot.gameObject);
         rangeRoot = new GameObject("LinkRange").transform;
         rangeRoot.SetParent(transform, false);
         rangeRoot.position = from.transform.position;
-        WorldCircleOutline.Create(rangeRoot, radius, RangeColor, 0.035f, 96, 52);
+        WorldCircleOutline.CreateRect(rangeRoot, (LinkRules.MaxDistanceCells + size.x * 0.5f) * cs,
+                                      (LinkRules.MaxDistanceCells + size.y * 0.5f) * cs, RangeColor, 0.035f, 52);
 
         Sfx.Play(SfxId.UiClick);
         NotificationUI.Instance?.Show(Pad.Active
@@ -202,7 +202,7 @@ public class LinkModeController : MonoBehaviour
 
     private void Build()
     {
-        line = WorldConnectionLine.Create(Vector3.zero, Vector3.zero, IdleColor, 0.06f, WorldConnectionLine.UnderSpritesOrder, transform);
+        line = WorldConnectionLine.Create(Vector3.zero, Vector3.zero, IdleColor, 0.04f, WorldConnectionLine.UnderSpritesOrder, transform);
         line.enabled = false;
 
         var canvasGO = new GameObject("LinkHintCanvas", typeof(RectTransform));

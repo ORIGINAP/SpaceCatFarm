@@ -26,3 +26,4 @@ MonoBehaviour:
     dropChance: 0.3
   cropData: {fileID: 11400000, guid: 040e612e2c4653a4489c4cdaca181e0c, type: 2}
   trait: 3
+  preferredSoil: 1

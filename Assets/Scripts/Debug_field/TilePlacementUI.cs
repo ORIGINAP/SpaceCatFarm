@@ -147,8 +147,18 @@ public class TilePlacementUI : MonoBehaviour
         int next = currentSlotIndex < 0
             ? (delta > 0 ? 0 : hotbarSlotCount - 1)
             : (currentSlotIndex + delta + hotbarSlotCount) % hotbarSlotCount;
+        // 패드는 빈 칸을 건너뜀 (빈손은 B)
+        if (Pad.Active)
+            for (int i = 0; i < hotbarSlotCount && IsEmptySlot(next); i++)
+                next = (next + delta + hotbarSlotCount) % hotbarSlotCount;
         SelectSlot(next);
         GamepadRumble.Play(Haptic.UiMove);
+    }
+
+    private static bool IsEmptySlot(int index)
+    {
+        var slot = Inventory.Instance?.GetSlot(index);
+        return slot == null || slot.IsEmpty;
     }
 
     public void Deselect()
@@ -420,7 +430,7 @@ public class TilePlacementUI : MonoBehaviour
         Vector2Int gridPos = GridManager.Instance.WorldToGrid(worldPos);
         ghostObject.transform.position = GridManager.Instance.GridToWorldCenter(gridPos, item.tileWidth, item.tileHeight);
 
-        bool canPlace = GridManager.Instance.CanPlaceAt(gridPos, item.tileWidth, item.tileHeight);
+        bool canPlace = GridManager.Instance.CanPlaceAt(gridPos, item.tileWidth, item.tileHeight, item.tilePrefab);
         SetGhostLook(canPlace);
     }
 

@@ -40,7 +40,9 @@ public class MobileHud : MonoBehaviour
     {
         var ptc = PlayerTileController.Instance;
         bool world = ptc != null && !PlayerTileController.IsPauseMenuOpen() && !TextInputFocus.Active;
-        if (canvas.enabled != world) canvas.enabled = world;
+        // 패드를 쓰는 동안엔 터치 버튼 대신 패드 독 · 안내 막대
+        bool show = world && !Pad.Active;
+        if (canvas.enabled != show) canvas.enabled = show;
 
         bool windowOpen = world && GamepadPanels.Open.Count > 0;
         TouchInput.StickEnabled = world && !windowOpen;
@@ -53,6 +55,7 @@ public class MobileHud : MonoBehaviour
             chatAvailable = NetSession.Mode != NetSession.Role.Offline;
             LayerHudBelowWindows();
         }
+        if (!show) return;
 
         UpdateStick(!windowOpen);
         UpdateTopRow();

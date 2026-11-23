@@ -112,6 +112,18 @@ public class CenterCore : Generator
         return list;
     }
 
+    // 이 단계에 상점가(꾸미기 · 공방)에 새로 들어오는 물건
+    public static List<FarmingItemData> ShopItemsUnlockedAt(int level)
+    {
+        var list = new List<FarmingItemData>();
+        var shop = ShopManager.Instance;
+        if (shop == null) return list;
+        foreach (var item in shop.CurrentStock)
+            if (item != null && item.itemType != FarmingItemType.Seed && shop.RequiredCoreLevel(item) == level) list.Add(item);
+        list.Sort((a, b) => a.basePrice.CompareTo(b.basePrice));
+        return list;
+    }
+
     public void MoveOutside(Transform t)
     {
         if (t == null || DistanceFrom(t.position) > 0f || GridManager.Instance == null) return;
@@ -143,6 +155,9 @@ public class CenterCore : Generator
     private void Celebrate()
     {
         var stage = CurrentStage;
+        float cs = GridManager.Instance != null ? GridManager.Instance.CellSize : 0.75f;
+        Purify.Wave(transform.position, (Size * 0.5f + Purify.CoreRadius(Level - 1)) * cs,
+                    (Size * 0.5f + Purify.CoreRadius(Level)) * cs, 1.6f, new Color(0.59f, 0.93f, 1f, 0.9f));
         Sfx.PlayAt(SfxId.CoreLevelUp, transform.position);
         CameraShake.GetOrCreate().Shake(0.6f, 0.35f, 0f);
         Vector3 center = transform.position + Vector3.up * 1.2f;
@@ -160,7 +175,7 @@ public class CenterCore : Generator
         if (recipes.Count > 0 && !listed)
             notify?.Show($"새로 만들 수 있어요: {string.Join(", ", recipes.ConvertAll(r => r.outputItem.itemName))}", NotificationUI.GoodNewsColor);
 
-        var items = ItemsUnlockedAt(Level);
+        var items = ItemsUnlockedAt(Level).FindAll(i => i.itemType == FarmingItemType.Seed);
         if (items.Count > 0)
         {
             var player = PlayerTileController.Instance;
@@ -168,12 +183,16 @@ public class CenterCore : Generator
             var names = new List<string>();
             foreach (var item in items)
             {
-                if (item.itemType == FarmingItemType.Seed && seedGiftAmount > 0 && Inventory.Instance != null)
+                if (seedGiftAmount > 0 && Inventory.Instance != null)
                     Inventory.Instance.AddItemOrDrop(item, seedGiftAmount, drop);
                 names.Add(item.itemName);
             }
-            if (!listed) notify?.Show($"새로 해금: {string.Join(", ", names)} (상점에서 살 수 있어요)", NotificationUI.GoodNewsColor);
+            if (!listed) notify?.Show($"새 씨앗: {string.Join(", ", names)} (상점에서 살 수 있어요)", NotificationUI.GoodNewsColor);
         }
+        // 새로 연 가게
+        foreach (ShopTab tab in System.Enum.GetValues(typeof(ShopTab)))
+            if (tab != ShopTab.Seeds && ShopManager.TabLevel(tab) == Level)
+                notify?.Show($"주민들이 상점가에 {ItemCellUI.Eul(ShopManager.TabName(tab))} 열었어요! 상점(B)에서 둘러봐요", NotificationUI.GoodNewsColor);
     }
 
     private IEnumerator Pop()

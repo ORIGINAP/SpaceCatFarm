@@ -23,6 +23,11 @@ public class GameTimeManager : MonoBehaviour
     public int CurrentHour   => currentHour;
     public int CurrentMinute => currentMinute;
 
+    public float SecondsPerGameMinute => secondsPerGameMinute;
+
+    // 1일차 0시부터 센 게임 분
+    public int AbsoluteMinute => (currentDay * 24 + currentHour) * 60 + currentMinute;
+
     public float TotalElapsedSeconds { get; private set; }
 
     public event System.Action OnMinuteChanged;

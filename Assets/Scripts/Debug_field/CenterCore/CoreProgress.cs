@@ -30,6 +30,8 @@ public static class CoreProgress
             case CoreRequirementType.Coins:         return (int)System.Math.Min(CurrencyManager.Instance?.Currency ?? 0L, int.MaxValue);
             case CoreRequirementType.Orders:        return ShuttleService.Trips;
             case CoreRequirementType.Residents:     return ShuttleService.Population;
+            case CoreRequirementType.MachineCrops:  return MachineFarm.CropKinds;
+            case CoreRequirementType.Outposts:      return CargoRails.OutpostCount;
             default:                                return 0;
         }
     }
@@ -83,6 +85,10 @@ public static class CoreProgress
                 return "셔틀 왕복";
             case CoreRequirementType.Residents:
                 return "주민 (셔틀로 데려오기)";
+            case CoreRequirementType.MachineCrops:
+                return "기계로 키우는 작물 (파종기 · 수확기)";
+            case CoreRequirementType.Outposts:
+                return "전초기지 (레일로 본진에 잇기)";
             default:
                 return "?";
         }

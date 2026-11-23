@@ -47,7 +47,10 @@ public static class ItemInfo
         switch (item.itemType)
         {
             case FarmingItemType.Tool:
-                return prev.IsDrill ? $"{prev.itemName}보다 초당 채굴량 {Times(DrillRate(item), DrillRate(prev))}" : null;
+                if (prev.IsDrill) return $"{prev.itemName}보다 초당 채굴량 {Times(DrillRate(item), DrillRate(prev))}";
+                if (prev.IsWaterCan) return $"{prev.itemName}보다 물 주는 칸 {Times(Area(item.waterRadius), Area(prev.waterRadius))} · {item.waterSeconds:0}초 촉촉";
+                if (prev.IsScanner) return $"{prev.itemName}보다 탐지 범위 {Times(item.scanRadius, prev.scanRadius)}";
+                return $"{prev.itemName}보다 한 번에 거두는 칸 {Times(Area(item.harvestRadius), Area(prev.harvestRadius))}";
 
             case FarmingItemType.Equipment:
                 return $"{prev.itemName} {PercentText(prev)} → {PercentText(item)}";
@@ -79,11 +82,25 @@ public static class ItemInfo
         var tile = PrefabTile(item);
         if (tile == null) return "";
         if (tile.AbilityText != null) return tile.AbilityText;
-        return tile.TileType == TileType.Decoration ? "기지를 예쁘게 꾸며요" : "";
+        return tile.TileType == TileType.Decoration
+            ? (item.charm > 0 ? $"마을 매력 ★{item.charm} — 매력이 높을수록 셔틀 짐값을 더 받아요" : "기지를 예쁘게 꾸며요")
+            : "";
     }
+
+    private static float Area(int r) => (r * 2 + 1) * (r * 2 + 1);
 
     private static string ToolAbilities(FarmingItemData item)
     {
+        if (item.IsWaterCan)
+        {
+            int n = item.waterRadius * 2 + 1;
+            return $"밭을 클릭하면 둘레 {n}×{n}칸에 물을 줘요 — {item.waterSeconds:0}초 동안 {FarmConditions.WaterMult:0.##}배 빨리 자라요";
+        }
+        if (item.IsScanner)
+        {
+            int n = item.scanRadius * 2 + 1;
+            return $"아무 곳이나 클릭하면 둘레 {n}×{n}칸을 탐사해요 — 광맥을 표시하고 지도를 밝히고, 가까운 유적 방향을 알려 줘요 (다시 쓰기 {item.scanCooldown:0}초)";
+        }
         if (!item.IsDrill)
         {
             int n = item.harvestRadius * 2 + 1;
@@ -119,6 +136,8 @@ public static class ItemInfo
         if (crop != null) s += $"\n수확하면 {crop.itemName} (판매가 {crop.basePrice}코인) + {seedText}";
         if (seed.trait != CropTrait.None && seed.trait != CropTrait.Shade)
             s += $"\n<color=#6E57B5>성향 [{CropTraits.Name(seed.trait)}]</color> {CropTraits.Describe(seed.trait)}";
+        if (seed.preferredSoil != SoilType.None)
+            s += $"\n<color=#6E57B5>{Soil.Name(seed.preferredSoil)}</color>에서 {Soil.GrowthMult:0}배 빨리 자라고 하나 더 열려요";
         return s;
     }
 
@@ -218,7 +237,8 @@ public static class ItemInfo
         switch (a.itemType)
         {
             case FarmingItemType.Tool:
-                return a.IsDrill && b.IsDrill;
+                return (a.IsDrill && b.IsDrill) || (a.IsWaterCan && b.IsWaterCan) || (a.IsScanner && b.IsScanner)
+                       || (a.harvestRadius > 0 && b.harvestRadius > 0);
             case FarmingItemType.Equipment:
                 return a.equipBonuses is { Length: > 0 } && b.equipBonuses is { Length: > 0 }
                        && a.equipBonuses[0].statType == b.equipBonuses[0].statType;

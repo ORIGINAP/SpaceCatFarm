@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a888e0bced5bddb42928b3c84198ab7f, type: 3}
+  m_Name: C5_03b_FastShuttle
+  m_EditorClassIdentifier: Assembly-CSharp::QuestDefinition
+  questName: "\uBE60\uB978 \uC154\uD2C0 \uC5F0\uAD6C"
+  description: "\uBE60\uB978 \uC154\uD2C0\uC744 \uC5F0\uAD6C\uD558\uBA74 \uC154\uD2C0\uC774
+    \uACE0\uD5A5\uBCC4\uC5D0 \uB2E4\uB140\uC624\uB294 \uC2DC\uAC04\uC774 \uC9E7\uC544\uC838\uC694."
+  talk: "\uC154\uD2C0\uC774 \uB354 \uBE68\uB9AC \uB2E4\uB140\uC624\uBA74 \uAC00\uC871\uB4E4\uC744
+    \uB354 \uC77C\uCC0D \uB9CC\uB0A0 \uC218 \uC788\uC5B4\uC694!"
+  hint: "[\uC5F0\uAD6C](T) \u2192 \uC154\uD2C0 \u2192 \uBE60\uB978 \uC154\uD2C0 \u2192
+    [\uC5F0\uAD6C\uD558\uAE30]"
+  padHint: "\uC2ED\uC790\uD0A4 \u2190 \uC5F0\uAD6C \u2192 \uC154\uD2C0 \u2192 \uBE60\uB978
+    \uC154\uD2C0 \u2192 [\uC5F0\uAD6C\uD558\uAE30]"
+  tutorialTip: 
+  objectives:
+  - type: 5
+    targetItem: {fileID: 0}
+    targetTechNodeId: shuttle_speed
+    targetAmount: 1
+  rewards: []
+  rewardCoins: 3000

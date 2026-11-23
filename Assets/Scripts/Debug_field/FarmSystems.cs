@@ -11,6 +11,8 @@ public class FarmSystems : MonoBehaviour
         go.AddComponent<WeatherManager>();
         go.AddComponent<ShuttleService>();
         go.AddComponent<ResidentCats>();
+        go.AddComponent<CargoRails>();
+        go.AddComponent<TownLife>();
 
         var fx = new GameObject("WeatherFx", typeof(RectTransform));
         fx.transform.SetParent(go.transform, false);
@@ -31,10 +33,12 @@ public class FarmSystems : MonoBehaviour
         }
 
         WeatherHUD.Create();
+        FestivalHUD.Create();
         ShuttleUI.Ensure();
         HudDock.Create();
         QuestGuide.Create();
         JourneyUI.Create();
         OreTwinkle.Ensure();
+        SoilFx.Ensure();
     }
 }

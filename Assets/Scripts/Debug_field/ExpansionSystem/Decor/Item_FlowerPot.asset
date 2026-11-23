@@ -17,9 +17,11 @@ MonoBehaviour:
     \uB18D\uC7A5\uC744 \uC608\uC058\uAC8C \uAFB8\uBA70 \uC918\uC694."
   icon: {fileID: 21300000, guid: f4ee1079b0e9bdd48bb75812cf21cd3c, type: 3}
   itemType: 0
-  basePrice: 24
+  basePrice: 120
   hideFromShop: 0
   unlockCoreLevel: 0
+  tier: 1
+  charm: 1
   tilePrefab: {fileID: 5822046919965082035, guid: 88e04d34a0b27af4491db60b0f1e2092, type: 3}
   tileWidth: 1
   tileHeight: 1
@@ -28,8 +30,15 @@ MonoBehaviour:
   canUseFuel: 0
   fuelValue: 20
   isCropProduct: 0
+  goldenVariant: {fileID: 0}
+  isGolden: 0
+  fertilizerCharges: 0
   toolGrade: 1
   miningPower: 1
   miningSpeed: 1
   harvestRadius: 0
+  waterRadius: 0
+  waterSeconds: 120
+  scanRadius: 0
+  scanCooldown: 6
   equipBonuses: []

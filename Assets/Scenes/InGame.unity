@@ -10207,10 +10207,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ResourceBlockSpawner
   spawnCenter: {x: 0, y: 0}
   spawnSize: {x: 50, y: 50}
-  densityCommon: 40
-  densityUncommon: 20
-  densityRare: 8
-  densityEpic: 3
+  densityCommon: 30
+  densityUncommon: 15
+  densityRare: 6
+  densityEpic: 2
   blocksPerCluster: 8
   clusterRadius: 3.5
   clusterRatio: 0.85

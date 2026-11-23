@@ -23,10 +23,11 @@ public class NotificationUI : MonoBehaviour
     private static readonly Color EquipmentColor = CuteUIKit.Hex(0xD6CBFF);
     private static readonly Color AdvancedColor  = CuteUIKit.Hex(0xFFA7BC);
     private static readonly Color OutlineColor   = new(0.12f, 0.08f, 0.07f, 0.85f);
-    private static readonly Color BackdropColor  = new(0.08f, 0.05f, 0.05f, 1f);
+    private static readonly Color BackdropColor  = new(0.09f, 0.06f, 0.06f, 0.85f);
 
-    private const float BackdropAlpha = 0.72f;
-    private const float FadePx        = 70f;
+    // 글자를 감싸는 판 여백
+    private const float PlatePad = 10f;
+    private const float FadePx   = 70f;
 
     private const float LineLife = 10f;
     private const float LineFade = 1.6f;
@@ -34,6 +35,8 @@ public class NotificationUI : MonoBehaviour
     private GameObject       chatPanel;
     private CanvasGroup      chatGroup;
     private TextMeshProUGUI  logText;
+    private RectTransform    backdropRT;
+    private float            textHeight;
 
     private struct Line
     {
@@ -83,6 +86,7 @@ public class NotificationUI : MonoBehaviour
 
     private void HandleItemAdded(FarmingItemData item, int amount)
     {
+        if (Inventory.QuietAdd) return;
         var color = ColorFor(item);
         // 흔한 아이템은 로그에 안 쌓음
         if (IsRoutine(item))
@@ -116,7 +120,7 @@ public class NotificationUI : MonoBehaviour
 
     private void BuildChatPanel()
     {
-        float textHeight = maxLines * fontSize * 1.3f;
+        textHeight = maxLines * fontSize * 1.3f;
 
         chatPanel = new GameObject("ChatPanel");
         chatPanel.transform.SetParent(transform, false);
@@ -127,12 +131,12 @@ public class NotificationUI : MonoBehaviour
 
         var backdrop = new GameObject("Backdrop", typeof(RectTransform));
         backdrop.transform.SetParent(chatPanel.transform, false);
-        var bgRT = (RectTransform)backdrop.transform;
-        bgRT.anchorMin = Vector2.zero;
-        bgRT.anchorMax = Vector2.one;
-        bgRT.offsetMin = bgRT.offsetMax = Vector2.zero;
+        backdropRT = (RectTransform)backdrop.transform;
+        backdropRT.anchorMin = backdropRT.anchorMax = backdropRT.pivot = Vector2.zero;
+        backdropRT.anchoredPosition = chatMargin - Vector2.one * PlatePad;
         var bg = backdrop.AddComponent<Image>();
-        bg.sprite        = BackdropSprite();
+        bg.sprite        = CuteUIKit.Rounded(10);
+        bg.type          = Image.Type.Sliced;
         bg.color         = BackdropColor;
         bg.raycastTarget = false;
 
@@ -167,32 +171,6 @@ public class NotificationUI : MonoBehaviour
         chatGroup.blocksRaycasts = false;
         chatGroup.interactable   = false;
         chatPanel.SetActive(false);
-    }
-
-    private static Sprite backdropSprite;
-
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetStatics() => backdropSprite = null;
-
-    private static Sprite BackdropSprite()
-    {
-        if (backdropSprite != null) return backdropSprite;
-        const int W = 64, H = 64;
-        var tex = new Texture2D(W, H, TextureFormat.RGBA32, false)
-        {
-            wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear, name = "NotificationBackdrop",
-        };
-        var px = new Color32[W * H];
-        for (int y = 0; y < H; y++)
-        for (int x = 0; x < W; x++)
-        {
-            float up    = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(((y + 0.5f) / H - 0.3f) / 0.7f));
-            float right = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(((x + 0.5f) / W - 0.6f) / 0.4f));
-            px[y * W + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(up * right * BackdropAlpha * 255f));
-        }
-        tex.SetPixels32(px);
-        tex.Apply(false, true);
-        return backdropSprite = Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), 100f);
     }
 
     public void Show(string message, Color? color = null)
@@ -252,9 +230,20 @@ public class NotificationUI : MonoBehaviour
         }
 
         bool any = sb.Length > 0;
-        if (any) logText.text = sb.ToString();
+        if (any)
+        {
+            logText.text = sb.ToString();
+            FitBackdrop();
+        }
         chatGroup.alpha = top;
         if (chatPanel.activeSelf != any) chatPanel.SetActive(any);
+    }
+
+    // 판을 글자 크기에 맞춤
+    private void FitBackdrop()
+    {
+        var size = logText.GetPreferredValues(logText.text, chatWidth, 0f);
+        backdropRT.sizeDelta = new Vector2(Mathf.Min(size.x, chatWidth), Mathf.Min(size.y, textHeight)) + Vector2.one * PlatePad * 2f;
     }
 
     private Color ColorFor(FarmingItemData item)

@@ -86,8 +86,36 @@ public class Inventory : MonoBehaviour
         if (item == null || amount <= 0) return false;
         if (AddItem(item, amount)) return true;
 
-        DroppedItem.Spawn(item, amount, dropPosition, PlayerTileController.Instance != null ? PlayerTileController.Instance.transform : null);
+        DroppedItem.SpawnShared(item, amount, dropPosition);
         return false;
+    }
+
+    // 화면 밖 기계가 보낸 건 머리 위 알림 없이
+    public static bool QuietAdd { get; private set; }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStatics() => QuietAdd = false;
+
+    public bool AddItemFrom(Vector3 source, FarmingItemData item, int amount)
+    {
+        QuietAdd = !OnScreen(source);
+        try { return AddItem(item, amount); }
+        finally { QuietAdd = false; }
+    }
+
+    public bool AddItemOrDropFrom(Vector3 source, FarmingItemData item, int amount, Vector3 dropPosition)
+    {
+        QuietAdd = !OnScreen(source);
+        try { return AddItemOrDrop(item, amount, dropPosition); }
+        finally { QuietAdd = false; }
+    }
+
+    private static bool OnScreen(Vector3 p)
+    {
+        var cam = Camera.main;
+        if (cam == null) return true;
+        var v = cam.WorldToViewportPoint(p);
+        return v.z > 0f && v.x > -0.05f && v.x < 1.05f && v.y > -0.05f && v.y < 1.05f;
     }
 
     public bool ConsumeItem(FarmingItemData item, int amount = 1)

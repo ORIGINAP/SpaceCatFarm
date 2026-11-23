@@ -194,6 +194,7 @@ public class MainMenuUI : MonoBehaviour
         titleDefault = MenuButton(titleRoot, "시작", true, () => ShowPage(Page.Worlds)).gameObject;
         MenuButton(titleRoot, "참가하기", false, () => ShowPage(Page.Join));
         MenuButton(titleRoot, "실험실", false, () => ShowPage(Page.Lab));
+        MenuButton(titleRoot, "전시 데모", false, StartDemo);
         MenuButton(titleRoot, "옵션", false, OptionsUI.Open);
         MenuButton(titleRoot, "종료", false, QuitGame);
     }
@@ -425,7 +426,8 @@ public class MainMenuUI : MonoBehaviour
         UIStyleKit.CreateDivider(t);
 
         var themeRow = Row(t, 8f);
-        labThemeButtons = new[] { LabThemeButton(themeRow, WorldTheme.Wasteland), LabThemeButton(themeRow, WorldTheme.Tundra) };
+        labThemeButtons = new Button[WorldThemeConfig.Count];
+        for (int i = 0; i < labThemeButtons.Length; i++) labThemeButtons[i] = LabThemeButton(themeRow, (WorldTheme)i);
         var sizeRow = Row(t, 8f);
         labDefault = LabSizeButton(sizeRow, WorldSize.Small).gameObject;
         LabSizeButton(sizeRow, WorldSize.Middle);
@@ -559,11 +561,10 @@ public class MainMenuUI : MonoBehaviour
             default:
             {
                 CardTitle(card, slot, "빈 슬롯", CuteUIKit.Cream, CuteUIKit.CocoaSoft);
-                FullWidthText(card, "새 월드 — 테마를 고르고 크기를 누르면 캐릭터를 만들고 시작합니다", 11f, UIStyleKit.TextSecondary, FontStyles.Normal);
+                FullWidthText(card, "새 월드 — 착륙할 지역을 고르고 크기를 누르면 캐릭터를 만들고 시작합니다 (다른 세 지역은 탐험으로 찾아요)", 11f, UIStyleKit.TextSecondary, FontStyles.Normal);
 
-                var themeRow = Row(card, 8f);
-                ThemeButton(themeRow, WorldTheme.Wasteland);
-                ThemeButton(themeRow, WorldTheme.Tundra);
+                var themeRow = Row(card, 6f);
+                for (int i = 0; i < WorldThemeConfig.Count; i++) ThemeButton(themeRow, (WorldTheme)i);
 
                 var row = Row(card, 8f);
                 Remember(SizeButton(row, slot, WorldSize.Small));
@@ -611,7 +612,7 @@ public class MainMenuUI : MonoBehaviour
     private void CreateCharacter(int slot, WorldSize size)
     {
         if (loading) return;
-        string world = $"월드 {slot + 1} · {WorldSizeConfig.DisplayName(size)} · {WorldThemeConfig.DisplayName(newWorldTheme)} 월드";
+        string world = $"월드 {slot + 1} · {WorldSizeConfig.DisplayName(size)} · {WorldThemeConfig.DisplayName(newWorldTheme)} 착륙";
         CharacterEditorUI.Open(new CatLook { name = CatLook.SuggestName() }, "캐릭터 만들기",
                                $"{world}에서 함께할 고양이 대원을 꾸며 주세요", "이 캐릭터로 시작",
                                look => NewGame(slot, size, look));
@@ -633,6 +634,15 @@ public class MainMenuUI : MonoBehaviour
         GameLaunchContext.SelectedSlot = slot;
         GameLaunchContext.IsNewGame    = false;
         StartCoroutine(LoadInGame($"월드 {slot + 1} 불러오는 중..."));
+    }
+
+    // 졸업 전시: 저장 안 하는 데모 월드에서 차례대로 시연
+    private void StartDemo()
+    {
+        if (loading) return;
+        loading = true;
+        Sfx.Play(SfxId.GameStart);
+        DemoDirector.Launch();
     }
 
     private IEnumerator LoadInGame(string message)

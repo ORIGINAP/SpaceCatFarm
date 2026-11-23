@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 357b9bc829fb10d49b9067fa176729d1, type: 3}
+  m_Name: Recipe_Scanner
+  m_EditorClassIdentifier: Assembly-CSharp::CraftingRecipe
+  recipeName: "\uD0D0\uC0AC \uC2A4\uCE90\uB108"
+  description: "\uC544\uBB34 \uACF3\uC774\uB098 \uD074\uB9AD\uD558\uBA74 \uB458\uB808
+    61\xD761\uCE78\uC744 \uD0D0\uC0AC\uD574\uC694. \uAD11\uB9E5\uC5D0 \uD45C\uC2DC\uB97C
+    \uB744\uC6B0\uACE0, \uAC00\uAE4C\uC6B4 \uC720\uC801 \uBC29\uD5A5\uC744 \uC54C\uB824
+    \uC918\uC694."
+  tier: 0
+  station: 0
+  requiredCoreLevel: 1
+  ingredients:
+  - item: {fileID: 11400000, guid: 585e59da51486264399bbfecf3a1c2a6, type: 2}
+    amount: 3
+  - item: {fileID: 11400000, guid: b0306d08f44f3da4fbbc010aad1897fe, type: 2}
+    amount: 3
+  outputItem: {fileID: 11400000, guid: fd11cb849b8d402459660db5e3e1271e, type: 2}
+  outputAmount: 1
+  craftSeconds: 0

@@ -113,7 +113,7 @@ public class ResourceBlockSpawner : MonoBehaviour
             if (entry.data == null) continue;
             int count = ResolveCount(entry);
             int clusterCount = Mathf.Max(1, Mathf.RoundToInt((float)count / blocksPerCluster));
-            var centers = GenerateClusterCenters(clusterCount);
+            var centers = GenerateClusterCenters(clusterCount, HomeBiome(entry.data));
             perEntryClusters[entry] = centers;
             allClusterCenters.AddRange(centers);
             perEntryPlaced[entry] = new List<Vector2>();
@@ -153,7 +153,22 @@ public class ResourceBlockSpawner : MonoBehaviour
         }
     }
 
-    private List<Vector2> GenerateClusterCenters(int count)
+    // 바이옴 광맥: 그 바이옴에서만 (철 · 구리는 어디서나)
+    public static WorldTheme? HomeBiome(ResourceData data) => data == null ? null : data.name switch
+    {
+        "RD_Aluminum" or "RD_Lithium"  => WorldTheme.Tundra,
+        "RD_Titanium" or "RD_Diamond"  => WorldTheme.Crystal,
+        "RD_Uranium"                   => WorldTheme.Marsh,
+        _                              => null,
+    };
+
+    private static bool InBiome(Vector2 p, WorldTheme? biome)
+    {
+        if (biome == null || TerrainMap.Current == null || GridManager.Instance == null) return true;
+        return TerrainMap.Current.BiomeAt(GridManager.Instance.WorldToGrid(p)) == biome.Value;
+    }
+
+    private List<Vector2> GenerateClusterCenters(int count, WorldTheme? biome)
     {
         var result = new List<Vector2>(count);
         float halfX = Mathf.Max(0f, spawnSize.x * 0.5f - clusterRadius);
@@ -164,14 +179,15 @@ public class ResourceBlockSpawner : MonoBehaviour
             Vector2 candidate = Vector2.zero;
             bool found = false;
 
-            for (int attempt = 0; attempt < maxAttempts; attempt++)
+            for (int attempt = 0; attempt < maxAttempts * 4; attempt++)
             {
                 candidate = new Vector2(
                     spawnCenter.x + Random.Range(-halfX, halfX),
                     spawnCenter.y + Random.Range(-halfY, halfY));
 
                 bool tooClose = InReservedArea(candidate, clusterRadius)
-                                || !ResourceBlock.FitsAt(candidate);
+                                || !ResourceBlock.FitsAt(candidate)
+                                || (attempt < maxAttempts * 3 && !InBiome(candidate, biome));
                 foreach (var c in allClusterCenters)
                 {
                     if (Vector2.Distance(candidate, c) < minClusterCenterDistance) { tooClose = true; break; }
@@ -197,7 +213,8 @@ public class ResourceBlockSpawner : MonoBehaviour
         {
             var candidate = nearCluster ? RandomPointInZone(centers) : RandomPointInArea();
 
-            bool tooClose = InReservedArea(candidate) || !ResourceBlock.FitsAt(candidate);
+            bool tooClose = InReservedArea(candidate) || !ResourceBlock.FitsAt(candidate)
+                            || (!nearCluster && !InBiome(candidate, HomeBiome(entry.data)));
 
             foreach (var p in mine)
             {

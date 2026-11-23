@@ -49,17 +49,13 @@ MonoBehaviour:
   dismantleTime: 2
   dropItemData: {fileID: 11400000, guid: 4081355d69f54c21af6b5c2adf130f7f, type: 2}
   canDismantle: 1
-  dropIconScale: 0.4
-  plantInterval: 2
-  searchRadius: 6
+  solidDepth: 0
+  plantInterval: 1.5
+  searchRadius: 4.5
   targetsPerCycle: 6
-  seedCapacity: 100
-  connectionLineColor: {r: 1, g: 0.85, b: 0.15, a: 0.8}
-  connectionLineWidth: 0.03
+  seedCapacity: 150
   coverageColor: {r: 0.35, g: 0.9, b: 0.4, a: 0.12}
-  beamColor: {r: 1, g: 1, b: 1, a: 0.9}
-  beamWidth: 0.03
-  beamFlashDuration: 0.4
+  storedSeeds: 0
   lastSeedItem: {fileID: 0}
   nextPlantAt: 0
 --- !u!212 &4902581384816593122

@@ -82,6 +82,12 @@ public class LevelUpUI : MonoBehaviour
         CuteUIKit.SparkleBurst(this, ribbonRT, CuteUIKit.Butter, 16, 120f);
     }
 
+    // 데모 진행용
+    public static void HideNow()
+    {
+        if (instance != null) instance.Hide();
+    }
+
     private void Hide()
     {
         if (!isOpen) return;
@@ -108,8 +114,10 @@ public class LevelUpUI : MonoBehaviour
         if (made.Count > 0) Section("새로 만들 수 있어요", CuteUIKit.MintTag, CuteUIKit.MintText, "제작창(C)에서", made);
         if (dishes.Count > 0) Section("새 요리", CuteUIKit.PinkSoft, CuteUIKit.CoralText, "고양이 주방에서", dishes);
 
-        var seeds = CenterCore.ItemsUnlockedAt(level);
+        var seeds = CenterCore.ItemsUnlockedAt(level).FindAll(i => i.itemType == FarmingItemType.Seed);
         if (seeds.Count > 0) Section("새 씨앗", CuteUIKit.ButterSoft, CuteUIKit.AmberText, "상점(B)에서 · 조금은 선물로", seeds);
+        var goods = CenterCore.ShopItemsUnlockedAt(level);
+        if (goods.Count > 0) Section("상점가에 새로 들어왔어요", CuteUIKit.LavenderTag, CuteUIKit.LavenderText, "상점(B) 꾸미기 · 공방", goods);
 
         var research = new List<string>();
         if (TechTreeManager.Instance != null)

@@ -1,0 +1,44 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2b0a100f391993b48942a788e8c92762, type: 3}
+  m_Name: Item_FlowerBed
+  m_EditorClassIdentifier: Assembly-CSharp::FarmingItemData
+  itemName: "\uAF43 \uD654\uB2E8"
+  description: "\uC54C\uB85D\uB2EC\uB85D \uAF43\uC774 \uD540 \uB098\uBB34 \uD654\uB2E8\uC774\uC5D0\uC694.
+    \uB9C8\uC744 \uAE38\uAC00\uC5D0 \uB450\uBA74 \uD654\uC0AC\uD574\uC838\uC694."
+  icon: {fileID: 21300000, guid: 1618220bfd9a65a4a929d625335a2c62, type: 3}
+  itemType: 0
+  basePrice: 200
+  hideFromShop: 0
+  unlockCoreLevel: 2
+  tier: 1
+  charm: 2
+  tilePrefab: {fileID: 5822046919965082035, guid: 029985c74548f7f43aa258368290cbe0, type: 3}
+  tileWidth: 1
+  tileHeight: 1
+  seedData: {fileID: 0}
+  minToolGrade: 1
+  canUseFuel: 0
+  fuelValue: 20
+  isCropProduct: 0
+  goldenVariant: {fileID: 0}
+  isGolden: 0
+  fertilizerCharges: 0
+  toolGrade: 1
+  miningPower: 1
+  miningSpeed: 1
+  harvestRadius: 0
+  waterRadius: 0
+  waterSeconds: 120
+  scanRadius: 0
+  scanCooldown: 6
+  equipBonuses: []

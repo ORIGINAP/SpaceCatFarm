@@ -5,7 +5,7 @@ public class HarvestPop : MonoBehaviour
 {
     private const int   MaxLive  = 24;
     private const float Duration = 0.5f;
-    private const int   Dots     = 6;
+    private const int   Dots     = 3;
 
     private static readonly Color Leaf    = new(0.55f, 0.86f, 0.45f, 1f);
     private static readonly Color Sparkle = new(1f, 0.97f, 0.85f, 1f);
@@ -49,7 +49,7 @@ public class HarvestPop : MonoBehaviour
         var vel   = new Vector2[Dots];
         for (int i = 0; i < Dots; i++)
         {
-            parts[i] = WorldFx.Sprite(transform, "Bit", dot, i < 4 ? Leaf : Sparkle, 166, Random.Range(0.07f, 0.12f));
+            parts[i] = WorldFx.Sprite(transform, "Bit", dot, i < 2 ? Leaf : Sparkle, 166, Random.Range(0.07f, 0.12f));
             parts[i].transform.localPosition = center;
             float a = Mathf.Lerp(0.15f, 0.85f, (i + Random.Range(0f, 1f)) / Dots) * Mathf.PI;
             vel[i] = new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * Random.Range(1.4f, 2.4f);

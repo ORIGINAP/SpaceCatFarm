@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 public enum TileType { Plant, Battery, Generator, Extractor, AutoFuelPipe, StormShield, Storage, AutoSeeder, AutoHarvester, CenterCore,
                        SolarPanel, GrowthBooster, AutoSeller, Decoration, Smelter, Civilization, PowerRelay,
-                       Kitchen, Composter, ShuttlePad }
+                       Kitchen, Composter, ShuttlePad, CargoRail, Camp, Purifier }
 
 public class TileItem : MonoBehaviour
 {

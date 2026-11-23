@@ -192,6 +192,7 @@ public class SaveManager : MonoBehaviour
     {
         var data = new SaveData();
         data.version    = SaveData.CurrentVersion;
+        data.legacyWorld = GameLaunchContext.LegacyWorld;
         data.worldSize  = (int)GameLaunchContext.PendingWorldSize;
         data.worldTheme = (int)GameLaunchContext.PendingWorldTheme;
         data.worldSeed  = GameLaunchContext.PendingWorldSeed;
@@ -252,6 +253,8 @@ public class SaveManager : MonoBehaviour
         data.codexGolden     = Codex.GoldenList();
         data.codexDishes     = Codex.DishList();
         data.codexMilestones = Codex.MilestonesPaid;
+        Exploration.CaptureTo(data);
+        TownLife.Instance?.CaptureTo(data);
 
         // 부유 연출 말고 원래 위치 저장
         foreach (var block in ResourceBlock.Active)
@@ -450,6 +453,8 @@ public class SaveManager : MonoBehaviour
         var plantSave = data.centralPlant;
         HarvestLog.Restore(data.harvestedCrops);
         Codex.Restore(data.codexGolden, data.codexDishes, data.codexMilestones);
+        Exploration.Restore(data);
+        TownLife.Instance?.Restore(data);
         WeatherManager.Instance?.Restore(data.weather, data.weatherNext, data.weatherNext2, data.weatherPeriod, data.stormStruckPeriod);
         ShuttleService.Instance?.Restore(data);
         if (legacy == null && plantSave != null && plantSave.exists)

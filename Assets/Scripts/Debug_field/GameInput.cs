@@ -25,7 +25,8 @@ public static class GameInput
         }
     }
 
-    public static bool PointerOverUI => TouchInput.UsingTouch
+    // 패드를 쓰는 동안엔 마지막 터치 자리가 옛 값이라 안 봄
+    public static bool PointerOverUI => TouchInput.UsingTouch && !Pad.Active
         ? TouchInput.OverUI
         : EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
 

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::FarmingItemData
   itemName: "\uD50C\uB77C\uC988\uB9C8 \uB4DC\uB9B4"
   description: "\uD50C\uB77C\uC988\uB9C8 \uB0A0\uB85C \uBB34\uC5C7\uC774\uB4E0 \uC21C\uC2DD\uAC04\uC5D0
-    \uCE90\uC694. \uB4F1\uAE09 3 \xB7 \uCC44\uAD74\uB7C9 20 \xB7 \uCD08\uB2F9 20\uD68C.
+    \uCE90\uC694. \uB4F1\uAE09 3 \xB7 \uCC44\uAD74\uB7C9 16 \xB7 \uCD08\uB2F9 2\uD68C.
     \uC790\uB3D9\uCC44\uAD74\uAE30 \uC18C\uCF13\uC5D0\uB3C4 \uB07C\uC6B8 \uC218 \uC788\uC5B4\uC694."
   icon: {fileID: 21300000, guid: 4fe631027769ccb4ebb70afe40383c98, type: 3}
   itemType: 3
@@ -31,7 +31,7 @@ MonoBehaviour:
   fuelValue: 20
   isCropProduct: 0
   toolGrade: 3
-  miningPower: 20
-  miningSpeed: 20
+  miningPower: 16
+  miningSpeed: 2
   harvestRadius: 0
   equipBonuses: []

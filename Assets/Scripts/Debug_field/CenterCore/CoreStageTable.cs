@@ -9,6 +9,8 @@ public enum CoreRequirementType
     Coins,
     Orders,
     Residents,
+    MachineCrops,
+    Outposts,
 }
 
 [System.Serializable]

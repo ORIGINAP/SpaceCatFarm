@@ -53,7 +53,7 @@ public class CoreProgressHUD : MonoBehaviour
 
     public static RectTransform ChipRect(CoreRequirement req)
     {
-        if (instance == null || req == null || !instance.cardRT.gameObject.activeInHierarchy) return null;
+        if (instance == null || req == null || !instance.chipArea.gameObject.activeInHierarchy) return null;
         foreach (var c in instance.chips) if (c.req == req) return c.bg.rectTransform;
         return null;
     }
@@ -72,6 +72,11 @@ public class CoreProgressHUD : MonoBehaviour
 
     private void Update()
     {
+        // 평소엔 한 줄, 마우스를 올리면 조건까지
+        bool peek = !Pad.Active && !MobileMode.Active && cardRT.gameObject.activeInHierarchy
+                    && RectTransformUtility.RectangleContainsScreenPoint(cardRT, GameInput.MousePosition, null);
+        if (chipArea.gameObject.activeSelf != peek) chipArea.gameObject.SetActive(peek);
+
         if (Time.unscaledTime < nextRefresh) return;
         nextRefresh = Time.unscaledTime + RefreshInterval;
         Refresh();
@@ -210,6 +215,8 @@ public class CoreProgressHUD : MonoBehaviour
         CoreRequirementType.CropVarieties => NetWorld.Item("RainbowCarrot")?.icon ?? NetWorld.Item("BlueStar")?.icon,
         CoreRequirementType.Orders        => HudDock.RocketIcon,
         CoreRequirementType.Residents     => HudDock.CatIcon,
+        CoreRequirementType.MachineCrops  => NetWorld.Item("AutoSeeder")?.icon,
+        CoreRequirementType.Outposts      => NetWorld.Item("Item_CargoRail")?.icon,
         CoreRequirementType.Coins         => CuteUIKit.Coin(),
         CoreRequirementType.Research      => HudDock.FlaskIcon,
         _                                 => null,
@@ -223,6 +230,8 @@ public class CoreProgressHUD : MonoBehaviour
         CoreRequirementType.Coins         => "발전 자금",
         CoreRequirementType.Orders        => "셔틀",
         CoreRequirementType.Residents     => "주민",
+        CoreRequirementType.MachineCrops  => "기계 작물",
+        CoreRequirementType.Outposts      => "전초기지",
         _                                 => "?",
     };
 
@@ -307,6 +316,7 @@ public class CoreProgressHUD : MonoBehaviour
         avl.childForceExpandWidth  = false;
         avl.childForceExpandHeight = false;
         chipArea = area.transform;
+        area.SetActive(false);
 
         card.raycastTarget = true;
         foreach (var g in card.GetComponentsInChildren<Graphic>()) if (g != card) g.raycastTarget = false;

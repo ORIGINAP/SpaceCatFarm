@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: C5_01b_BigFamilies
   m_EditorClassIdentifier: Assembly-CSharp::QuestDefinition
   questName: "\uB300\uAC00\uC871 \uB9DE\uC774"
-  description: "\uC154\uD2C0\uB85C \uC8FC\uBBFC\uC744 75\uB9C8\uB9AC\uAE4C\uC9C0
+  description: "\uC154\uD2C0\uB85C \uC8FC\uBBFC\uC744 110\uB9C8\uB9AC\uAE4C\uC9C0
     \uB298\uB824\uC694. \uAC70\uC8FC \uBAA8\uB4C8\uB9C8\uB2E4 \uD55C \uBC88\uC5D0
     \uD55C \uB9C8\uB9AC\uC529 \uB354 \uD0C0\uC694."
   talk: "\uAC70\uC8FC \uBAA8\uB4C8 \uB355\uBD84\uC5D0 \uC154\uD2C0\uB9C8\uB2E4 \uACE0\uC591\uC774\uAC00
@@ -26,6 +26,6 @@ MonoBehaviour:
   - type: 11
     targetItem: {fileID: 0}
     targetTechNodeId: 
-    targetAmount: 75
+    targetAmount: 110
   rewards: []
   rewardCoins: 3000

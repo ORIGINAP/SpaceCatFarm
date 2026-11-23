@@ -362,7 +362,9 @@ public class ItemStorageUI : MonoBehaviour
         var kinds = new HashSet<FarmingItemData>();
         var moved = new List<(Sprite icon, Vector3 from, FarmingItemData item)>();
         bool stoppedFull = false;
-        for (int i = 0; i < inv.SlotCount; i++)
+        // 창고는 핫바(손에 든 것)를 남김, 씨앗통은 핫바 씨앗도 넣음
+        int first = currentTile is AutoSeeder ? 0 : Mathf.Min(Inventory.HotbarSize, inv.SlotCount);
+        for (int i = first; i < inv.SlotCount; i++)
         {
             var slot = inv.GetSlot(i);
             if (slot == null || slot.IsEmpty) continue;
@@ -393,7 +395,8 @@ public class ItemStorageUI : MonoBehaviour
             Status(stoppedFull ? $"{kinds.Count}종 {total}개를 넣었어요 — {BoxName}가 가득 차서 나머지는 남겼어요"
                                : $"{kinds.Count}종 {total}개를 넣었어요");
         }
-        else Fail(depositAllButton.transform as RectTransform, stoppedFull ? $"{BoxName}가 가득 찼어요" : "넣을 수 있는 물건이 없어요");
+        else Fail(depositAllButton.transform as RectTransform, stoppedFull ? $"{BoxName}가 가득 찼어요"
+            : first > 0 ? "넣을 물건이 없어요 (핫바 칸은 그대로 둬요)" : "넣을 수 있는 물건이 없어요");
     }
 
     private static ItemCell CellOf(List<ItemCell> cells, FarmingItemData item)

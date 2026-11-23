@@ -4,10 +4,10 @@ public class PowerLink : MonoBehaviour
 {
     public enum Kind { Relay, Consumer }
 
-    private static readonly Color OnColor  = new(0.45f, 0.9f, 1f, 0.6f);
+    private static readonly Color OnColor  = new(0.53f, 0.89f, 1f, 0.6f);
     private static readonly Color OffColor = new(0.72f, 0.72f, 0.78f, 0.35f);
-    private const float Width        = 0.035f;
-    private const float RelayWidth   = 0.07f;
+    private const float Width        = 0.028f;
+    private const float RelayWidth   = 0.04f;
     private const int   SortingOrder = WorldConnectionLine.UnderSpritesOrder;
 
     private TileItem     owner;

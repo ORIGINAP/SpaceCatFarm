@@ -15,25 +15,29 @@ public class FloatingNotification : MonoBehaviour
     private const int   MaxLines    = 4;
     // 같은 아이템은 한 줄로 합침
     private const float MergeWindow = 1.0f;
-    private const float FontSize    = 26f;
-    private const float LineGap     = 32f;
+    private const float FontSize    = 30f;
+    private const float LineGap     = 38f;
     private const float GlowPadX    = 16f;
-    private const float IconSize    = 30f;
+    private const float IconSize    = 32f;
     private const float IconGap     = 5f;
-    private const float GlowAlpha   = 0.72f;
+    private const float GlowAlpha   = 0.92f;
+    private const float RimAlpha    = 0.9f;
+    private const float RimWidth    = 3f;
     private const float SlideSpeed  = 14f;
     private const float FadeInTime  = 0.12f;
     private const float FadeOutFrom = 0.65f;
     private static readonly float[] StackAlpha = { 1f, 0.8f, 0.55f, 0.3f };
     private static readonly Color OutlineColor = new(0.12f, 0.08f, 0.07f, 1f);
-    private static readonly Color GlowColor    = new(0.06f, 0.04f, 0.04f, 1f);
+    private static readonly Color GlowColor    = new(0.09f, 0.06f, 0.06f, 1f);
 
     private sealed class Line
     {
         public RectTransform   rect;
         public TextMeshProUGUI text;
+        public Image           rim;
         public Image           glow;
         public Image           icon;
+        public Color           accent;
         public FarmingItemData item;
         public int             amount;
         public float           born;
@@ -128,6 +132,8 @@ public class FloatingNotification : MonoBehaviour
             l.icon.color = new Color(1f, 1f, 1f, a);
             var g = GlowColor; g.a = GlowAlpha * a;
             l.glow.color = g;
+            var r = l.accent; r.a = RimAlpha * a;
+            l.rim.color = r;
 
             l.y = Mathf.Lerp(l.y, i * LineGap, 1f - Mathf.Exp(-SlideSpeed * Time.deltaTime));
             l.rect.anchoredPosition = new Vector2(0f, l.y);
@@ -156,17 +162,9 @@ public class FloatingNotification : MonoBehaviour
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0f);
         rt.pivot     = new Vector2(0.5f, 0f);
 
-        var glowGO = new GameObject("Glow", typeof(RectTransform));
-        glowGO.transform.SetParent(rt, false);
-        var glowRT = (RectTransform)glowGO.transform;
-        glowRT.anchorMin = Vector2.zero;
-        glowRT.anchorMax = Vector2.one;
-        glowRT.offsetMin = glowRT.offsetMax = Vector2.zero;
-        var glow = glowGO.AddComponent<Image>();
-        glow.sprite        = GlowSprite();
-        glow.type          = Image.Type.Sliced;
-        glow.color         = new Color(GlowColor.r, GlowColor.g, GlowColor.b, 0f);
-        glow.raycastTarget = false;
+        // 글자색 테두리 + 어두운 판
+        var rim  = PlateLayer(rt, "Rim", 14, 0f);
+        var glow = PlateLayer(rt, "Glow", 11, RimWidth);
 
         var txtGO = new GameObject("Text", typeof(RectTransform));
         txtGO.transform.SetParent(rt, false);
@@ -196,34 +194,23 @@ public class FloatingNotification : MonoBehaviour
         icon.raycastTarget  = false;
         icon.color          = new Color(1f, 1f, 1f, 0f);
 
-        return new Line { rect = rt, text = tmp, glow = glow, icon = icon };
+        return new Line { rect = rt, text = tmp, rim = rim, glow = glow, icon = icon, accent = color };
     }
 
-    private static Sprite glowSprite;
-
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetStatics() => glowSprite = null;
-
-    private static Sprite GlowSprite()
+    private static Image PlateLayer(RectTransform parent, string objName, int radius, float inset)
     {
-        if (glowSprite != null) return glowSprite;
-        const int W = 48, H = 32, R = 10;
-        var tex = new Texture2D(W, H, TextureFormat.RGBA32, false)
-        {
-            wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear, name = "HeadNotificationGlow",
-        };
-        var px = new Color32[W * H];
-        for (int y = 0; y < H; y++)
-        for (int x = 0; x < W; x++)
-        {
-            float cx = Mathf.Clamp(x + 0.5f, R, W - R), cy = Mathf.Clamp(y + 0.5f, R, H - R);
-            float d  = Mathf.Sqrt((x + 0.5f - cx) * (x + 0.5f - cx) + (y + 0.5f - cy) * (y + 0.5f - cy)) / R;
-            float a  = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(d));
-            px[y * W + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(a * 255f));
-        }
-        tex.SetPixels32(px);
-        tex.Apply(false, true);
-        return glowSprite = Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), 100f, 0,
-                                          SpriteMeshType.FullRect, new Vector4(R, R, R, R));
+        var go = new GameObject(objName, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var rt = (RectTransform)go.transform;
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = new Vector2(inset, inset);
+        rt.offsetMax = new Vector2(-inset, -inset);
+        var img = go.AddComponent<Image>();
+        img.sprite        = CuteUIKit.Rounded(radius);
+        img.type          = Image.Type.Sliced;
+        img.color         = Color.clear;
+        img.raycastTarget = false;
+        return img;
     }
 }

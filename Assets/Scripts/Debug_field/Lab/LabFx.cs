@@ -90,7 +90,8 @@ public class LabFx : MonoBehaviour
     {
         var holder = new GameObject("FloatText").transform;
         holder.position = pos;
-        var label = LabArt.Label(holder, text, size, color, Vector3.zero, 220);
+        var label = LabArt.Label(holder, text, size, TextPlate.Light(color), Vector3.zero, 220);
+        TextPlate.Attach(label, TextPlate.Light(color, 0.6f));
         const float life = 1.3f;
         for (float t = 0f; t < life && holder != null; t += Time.deltaTime)
         {

@@ -70,6 +70,7 @@ public class NetClient
         GameLaunchContext.PendingWorldSize  = (WorldSize)msg.worldSize;
         GameLaunchContext.PendingWorldTheme = (WorldTheme)msg.worldTheme;
         GameLaunchContext.PendingWorldSeed  = msg.worldSeed;
+        GameLaunchContext.LegacyWorld       = msg.legacyWorld;
         GameLaunchContext.PendingGridWidth  = msg.gridWidth;
         GameLaunchContext.PendingGridHeight = msg.gridHeight;
         GameLaunchContext.IsNewGame         = !msg.knownGuest;
@@ -160,8 +161,13 @@ public class NetClient
             {
                 // 광석 먼저 처리
                 foreach (var r in msg.rocks)
-                    if (!Pending(pendingRocks, NetWorld.RockKey(r.posX, r.posY)))
-                        NetWorld.ApplyRock(r, rocks);
+                {
+                    var key = NetWorld.RockKey(r.posX, r.posY);
+                    if (Pending(pendingRocks, key)) continue;
+                    if (msg.hits.Contains(key) && rocks.TryGetValue(key, out var hit) && hit != null)
+                        hit.PlayHitFx(r.remaining <= 0);
+                    NetWorld.ApplyRock(r, rocks);
+                }
 
                 foreach (var a in msg.removed)
                 {

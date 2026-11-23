@@ -457,7 +457,10 @@ public static class CuteUIKit
 
         Text(go.transform, title, fontSize, Color.white, FontStyles.Bold);
         if (!string.IsNullOrEmpty(keyHint))
-            Pill(go.transform, keyHint, Hex(0xFFFFFF, 0.9f), Strawberry, 9f, 7, new RectOffset(5, 5, 1, 1), out _);
+        {
+            var pill = Pill(go.transform, keyHint, Hex(0xFFFFFF, 0.9f), Strawberry, 9f, 7, new RectOffset(5, 5, 1, 1), out _);
+            go.AddComponent<HideOnPad>().target = pill.gameObject;
+        }
         return (RectTransform)go.transform;
     }
 

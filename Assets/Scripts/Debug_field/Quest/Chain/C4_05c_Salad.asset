@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a888e0bced5bddb42928b3c84198ab7f, type: 3}
+  m_Name: C4_05c_Salad
+  m_EditorClassIdentifier: Assembly-CSharp::QuestDefinition
+  questName: "\uC0C8 \uBA54\uB274: \uBB34\uC9C0\uAC1C \uC0D0\uB7EC\uB4DC"
+  description: "\uBB34\uC9C0\uAC1C \uC0D0\uB7EC\uB4DC\uB294 \uB9C8\uC9C0\uB9C9 \uB9CC\uCC2C\uC5D0\uB3C4
+    \uB4E4\uC5B4\uAC00\uC694. \uBBF8\uB9AC \uC775\uD600 \uB46C\uC694."
+  talk: "\uD070 \uC794\uCE58\uC5D0\uB294 \uC54C\uB85D\uB2EC\uB85D\uD55C \uC0D0\uB7EC\uB4DC\uAC00
+    \uBE60\uC9C8 \uC218 \uC5C6\uC5B4\uC694!"
+  hint: "\uC8FC\uBC29 \uD074\uB9AD \u2192 \uBA54\uB274\uD310\uC5D0\uC11C \uBB34\uC9C0\uAC1C
+    \uC0D0\uB7EC\uB4DC"
+  padHint: "\uC8FC\uBC29 \uC55E\uC5D0\uC11C A \u2192 \uBB34\uC9C0\uAC1C \uC0D0\uB7EC\uB4DC"
+  tutorialTip: 
+  objectives:
+  - type: 1
+    targetItem: {fileID: 11400000, guid: 9d4fe7ebeba1e194fb0b396e106b7f0e, type: 2}
+    targetTechNodeId: 
+    targetAmount: 1
+  rewards: []
+  rewardCoins: 800

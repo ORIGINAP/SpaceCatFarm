@@ -17,6 +17,7 @@ public class WorldBootstrap : MonoBehaviour
         if (continuing) GameLaunchContext.PendingCharacter = saved?.character;
         HarvestLog.Clear();
         Codex.Clear();
+        Exploration.Clear();
         NetGuests.Clear();
 
         var cfg = ResolveGrid(saved, continuing);
@@ -25,8 +26,10 @@ public class WorldBootstrap : MonoBehaviour
         if (GridManager.Instance != null)
             WorldBackground.Create(GridManager.Instance, GameLaunchContext.PendingWorldTheme, GameLaunchContext.PendingWorldSeed);
         ExploredMap.Clear(cfg.gridWidth, cfg.gridHeight);
+        if (GridManager.Instance != null && !GameLaunchContext.LegacyWorld) Purify.Ensure(GridManager.Instance);
         MinimapUI.Ensure();
         FarmSystems.Ensure();
+        BiomeTracker.Ensure();
 
         var spawner = FindFirstObjectByType<ResourceBlockSpawner>();
         if (spawner != null)
@@ -53,6 +56,7 @@ public class WorldBootstrap : MonoBehaviour
 
     private static void ResolveThemeAndSeed(SaveData data, bool continuing)
     {
+        if (!NetSession.IsReplica) GameLaunchContext.LegacyWorld = continuing && data != null && (data.legacyWorld || data.version < SaveData.FirstPurifyVersion);
         if (!continuing) return;
         GameLaunchContext.PendingWorldTheme = data != null ? (WorldTheme)data.worldTheme : WorldTheme.Wasteland;
         GameLaunchContext.PendingWorldSeed  = data != null ? data.worldSeed : 0;

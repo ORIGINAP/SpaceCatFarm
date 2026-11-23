@@ -24,7 +24,9 @@ public class ShuttleUI : MonoBehaviour
     private ScrollRect    listScroll;
     private RectTransform focusCard, completeCard;
     private bool          scrollToFocus;
-    private TextMeshProUGUI popText, nextText, fleetText;
+    private TextMeshProUGUI popText, nextText, fleetText, bedText;
+    private TextMeshProUGUI townText, festivalLabel, seatLabel;
+    private Button          festivalButton, seatButton;
     private Image           nextFill;
     private TextMeshProUGUI codexLabel;
     private Button          firstButton, firstLoadable, firstComplete;
@@ -32,6 +34,8 @@ public class ShuttleUI : MonoBehaviour
     private bool            dirty;
     private float           nextTick;
     private int             shownHaveSignature;
+    private const int       SlowCargoSeconds = 180;
+    private const int       SoilAdviceLevel  = 4;
     // 0.25초마다 글자만 갱신
     private readonly List<System.Action> live = new();
     private readonly Dictionary<int, RectTransform> shipIcons = new();
@@ -163,7 +167,9 @@ public class ShuttleUI : MonoBehaviour
 
     private void Update()
     {
-        if (!TextInputFocus.Active && GameInput.GetKeyDown(ToggleKey) && !PlayerTileController.IsPauseMenuOpen())
+        bool pressed = (!TextInputFocus.Active && GameInput.GetKeyDown(ToggleKey))
+                       || (InputManager.Instance != null && InputManager.Instance.ShuttleButton);
+        if (pressed && !PlayerTileController.IsPauseMenuOpen())
             Toggle();
 
         if (Time.unscaledTime >= nextTick)
@@ -278,12 +284,71 @@ public class ShuttleUI : MonoBehaviour
         }
         else
         {
-            nextText.text = core != null && core.IsMaxLevel ? "모든 문명 단계 완료 — 큰 이주선이 남은 고양이들을 데려왔어요!" : "셔틀로 고향별 고양이들을 데려와요";
+            nextText.text = core != null && core.IsMaxLevel ? "모든 문명 단계 완료 — 새 고향 완성!" : "셔틀로 고향별 고양이들을 데려와요";
             nextFill.fillAmount = 1f;
         }
         int n = ShuttleService.Instance != null ? ShuttleService.Instance.Shuttles.Count : 0;
         fleetText.text = $"셔틀 {n}척";
+        bedText.text   = ResidentCats.Homeless > 0 ? $"잠자리 -{ResidentCats.Homeless}" : $"잠자리 {ResidentCats.Beds}";
+        RefreshTown();
     }
+
+    private void RefreshTown()
+    {
+        if (townText == null) return;
+        int charm = TownLife.Charm;
+        string charmLine = CenterCore.CurrentLevel < ShopManager.DecorLevel
+            ? $"마을 매력 ★{charm} · 꾸미기 가게는 문명 Lv.{ShopManager.DecorLevel}에 열려요"
+            : $"마을 매력 ★{charm} → 짐값 +{TownLife.Percent(TownLife.CharmBonus)}% <color=#8A7FA8>(상점 꾸미기 가게의 장식)</color>";
+        if (TownLife.FestivalActive)
+        {
+            int left = Mathf.CeilToInt(TownLife.FestivalSecondsLeft);
+            townText.text      = $"<color=#C9485B>마을 축제 중!</color> {left / 60}:{left % 60:00} 남음 · {TownLife.EffectText}\n{charmLine}";
+            festivalLabel.text = "축제 중";
+        }
+        else
+        {
+            townText.text = charmLine + (TownLife.Unlocked ? $"\n마을 축제 (하루 한 번): {TownLife.EffectText}" : "");
+            festivalLabel.text = !TownLife.Unlocked ? $"축제 Lv.{TownLife.FestivalLevel}부터"
+                               : TownLife.HeldToday ? "축제는 내일 또"
+                               : $"마을 축제 열기 · {CurrencyManager.Format(TownLife.FestivalCost)}코인";
+        }
+        CuteUIKit.ApplyButtonColors(festivalButton, TownLife.FestivalBlock() == null ? CuteUIKit.ButtonCoral : CuteUIKit.EmptiedFill);
+
+        int seats = TownLife.ExtraSeats;
+        seatButton.gameObject.SetActive(TownLife.SeatsUnlocked);
+        if (TownLife.SeatsUnlocked)
+        {
+            seatLabel.text = seats > 0 ? $"이주 지원 좌석 +{seats} ▸" : "이주 지원 좌석 끔 ▸";
+            CuteUIKit.ApplyButtonColors(seatButton, seats > 0 ? CuteUIKit.ButtonSky : CuteUIKit.ButtonLatte);
+            townText.text += seats > 0
+                ? $"\n이주 지원: 셔틀마다 고양이 +{seats}마리 (떠날 때 {CurrencyManager.Format(TownLife.SeatCost * seats)}코인)"
+                : $"\n이주 지원 좌석: 1마리당 {CurrencyManager.Format(TownLife.SeatCost)}코인 내고 고양이를 더 데려와요";
+        }
+    }
+
+    private void CycleSeats()
+    {
+        TownLife.Instance?.SetSeats((TownLife.ExtraSeats + 1) % (TownLife.MaxSeats + 1));
+        Sfx.Play(SfxId.UiClick);
+        RefreshTown();
+    }
+
+    private void HoldFestival()
+    {
+        string block = TownLife.FestivalBlock();
+        if (block != null)
+        {
+            Sfx.Play(SfxId.UiError);
+            NotificationUI.Instance?.Show(block);
+            if (festivalButton != null) StartCoroutine(CuteUIKit.Wiggle(festivalButton.transform as RectTransform, 7f, 0.3f, 2f));
+            return;
+        }
+        TownLife.Instance?.Hold();
+        RefreshTown();
+    }
+
+    public RectTransform FestivalButtonRect => isOpen && festivalButton != null ? festivalButton.transform as RectTransform : null;
 
     private void BuildCard(ShuttleSave s)
     {
@@ -348,11 +413,21 @@ public class ShuttleUI : MonoBehaviour
         }
 
         var inv = Inventory.Instance;
+        FarmingItemData slowCrop = null;
+        int slowest = 0;
         foreach (var line in s.cargo)
         {
             var item = NetWorld.Item(line.item);
             if (item == null) continue;
             int have = inv != null ? inv.GetCount(item) : 0;
+            string eta = "";
+            if (line.Missing > have && FarmRate.IsFarmCrop(item))
+            {
+                int sec = FarmRate.EtaSeconds(item, line.Missing - have);
+                eta = sec < 0 ? " <color=#C9485B>· 안 자라는 중</color>"
+                              : $" <color=#7A5A4F>· {FarmRate.Format(sec)}</color>";
+                if (sec < 0 || sec > slowest) { slowest = sec < 0 ? int.MaxValue : sec; slowCrop = item; }
+            }
             var cell = Row(mid);
             Icon(cell, item.icon, 26f);
             bool done = line.Missing <= 0;
@@ -360,16 +435,26 @@ public class ShuttleUI : MonoBehaviour
                                 : $"<color=#{(line.loaded > 0 ? "A8741A" : "7A5A4F")}>{line.loaded}/{line.amount}</color>";
             string bag = done ? "" : have >= line.Missing ? $" <size=85%><color=#3F8A66>가방 {Mathf.Min(have, 999)}</color></size>"
                                                          : $" <size=85%><color=#C9485B>가방 {Mathf.Min(have, 999)}</color></size>";
-            var lt = CuteUIKit.Text(cell, $"{item.itemName} {count}{bag}", 12f, CuteUIKit.Cocoa, FontStyles.Bold, TextAlignmentOptions.MidlineLeft);
+            var lt = CuteUIKit.Text(cell, $"{item.itemName} {count}{bag}{eta}", 12f, CuteUIKit.Cocoa, FontStyles.Bold, TextAlignmentOptions.MidlineLeft);
             lt.richText = true;
+        }
+        if (slowCrop != null && slowest >= SlowCargoSeconds)
+        {
+            string advice = SoilAdvice(slowCrop)
+                            ?? (slowest == int.MaxValue ? $"{slowCrop.itemName} 씨앗을 파종기에 넣으면 기계가 계속 키워요"
+                                                        : $"{slowCrop.itemName} 밭을 늘리거나 파종기 · 수확기를 더 세우면 빨라져요");
+            var tip = CuteUIKit.Text(mid, advice, 12f, CuteUIKit.CocoaSoft, FontStyles.Normal, TextAlignmentOptions.MidlineLeft);
+            tip.textWrappingMode = TextWrappingModes.Normal;
         }
 
         var right = Column(card, flexible: false, width: 138f);
         var rewardRow = Row(right);
         var coin = Icon(rewardRow, CuteUIKit.Coin(), 18f);
         coin.color = Color.white;
-        CuteUIKit.Text(rewardRow, CurrencyManager.Format(s.reward), 16f, CuteUIKit.AmberText, FontStyles.Bold, TextAlignmentOptions.MidlineLeft);
+        // 마을 보너스를 얹은 실제 짐값
+        var payText = CuteUIKit.Text(rewardRow, CurrencyManager.Format(ShuttleService.Payout(s.reward)), 16f, CuteUIKit.AmberText, FontStyles.Bold, TextAlignmentOptions.MidlineLeft);
         CuteUIKit.Text(rewardRow, "짐값", 10f, CuteUIKit.CocoaSoft, FontStyles.Normal, TextAlignmentOptions.MidlineLeft);
+        live.Add(() => payText.text = CurrencyManager.Format(ShuttleService.Payout(s.reward)));
         var bonusItem = NetWorld.Item(s.bonusItem);
         if (bonusItem != null && s.bonusAmount > 0)
             CuteUIKit.Text(right, $"덤: {bonusItem.itemName} ×{s.bonusAmount}", 10f, CuteUIKit.MintText, FontStyles.Bold);
@@ -503,6 +588,15 @@ public class ShuttleUI : MonoBehaviour
         Sfx.Play(SfxId.UiConfirm, 0.7f);
         NotificationUI.Instance?.Show(loaded > 0 ? $"다른 가족의 짐을 받았어요 — 실어 둔 짐 {loaded}개는 가방으로 돌려받았어요" : "다른 가족의 짐을 받았어요");
         dirty = true;
+    }
+
+    // 맞는 토양을 아직 안 쓰는 작물이면 알려 줌
+    private static string SoilAdvice(FarmingItemData crop)
+    {
+        if (CenterCore.CurrentLevel < SoilAdviceLevel) return null;
+        var seed = Soil.SoilSeedOf(crop);
+        if (seed == null || Soil.CountSuited(seed.seedData) > 0) return null;
+        return $"{crop.itemName}: {Soil.Name(Soil.Of(seed))}에서 키우면 {Soil.GrowthMult:0}배 빨리 자라고 하나 더 열려요";
     }
 
     public static string MissingText(ShuttleSave s)
@@ -656,9 +750,31 @@ public class ShuttleUI : MonoBehaviour
         nextText = CuteUIKit.Text(col, "", 12f, CuteUIKit.Cocoa, FontStyles.Bold, TextAlignmentOptions.MidlineLeft);
         nextText.richText = true;
         Bar(col, out nextFill, CuteUIKit.Strawberry);
+        CuteUIKit.Pill(sum.transform, "잠자리 0", CuteUIKit.LavenderTag, CuteUIKit.Cocoa, 11f, 9, new RectOffset(8, 8, 2, 3), out bedText);
         CuteUIKit.Pill(sum.transform, "셔틀 1척", CuteUIKit.SkyTag, CuteUIKit.SkyText, 11f, 9, new RectOffset(8, 8, 2, 3), out fleetText);
 
-        var hint = CuteUIKit.Text(transform, "짐을 다 실으면 셔틀이 고향별에 다녀오며 고양이 가족을 태워 와요. 착륙장의 셔틀을 클릭해도 짐이 실려요.",
+        // 마을 매력 · 축제
+        var town = CuteUIKit.Card(transform, CuteUIKit.Lighter(CuteUIKit.LavenderTag, 0.4f), 14, "Town");
+        town.raycastTarget = false;
+        var thl = town.gameObject.AddComponent<HorizontalLayoutGroup>();
+        thl.padding                = new RectOffset(12, 8, 5, 5);
+        thl.spacing                = 10f;
+        thl.childAlignment         = TextAnchor.MiddleLeft;
+        thl.childControlWidth      = true;
+        thl.childControlHeight     = true;
+        thl.childForceExpandWidth  = false;
+        thl.childForceExpandHeight = false;
+        townText = CuteUIKit.Text(town.transform, "", 12f, CuteUIKit.Cocoa, FontStyles.Bold, TextAlignmentOptions.MidlineLeft);
+        townText.richText = true;
+        townText.textWrappingMode = TextWrappingModes.Normal;
+        townText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+        var buttons = Column(town.transform, flexible: false, width: 196f);
+        festivalButton = CuteUIKit.Button(buttons, "마을 축제 열기", CuteUIKit.ButtonCoral, HoldFestival, 196f, 26f, 12f);
+        festivalLabel  = festivalButton.GetComponentInChildren<TextMeshProUGUI>(true);
+        seatButton     = CuteUIKit.Button(buttons, "이주 지원 좌석", CuteUIKit.ButtonSky, CycleSeats, 196f, 24f, 11f);
+        seatLabel      = seatButton.GetComponentInChildren<TextMeshProUGUI>(true);
+
+        var hint = CuteUIKit.Text(transform, "짐을 다 실으면 셔틀이 고향별에 다녀오며 고양이 가족을 태워 와요. 착륙장의 셔틀을 눌러도 짐이 실려요.",
                                   11f, CuteUIKit.CocoaSoft, FontStyles.Normal, TextAlignmentOptions.MidlineLeft);
         hint.textWrappingMode = TextWrappingModes.Normal;
         CuteUIKit.DottedDivider(transform);

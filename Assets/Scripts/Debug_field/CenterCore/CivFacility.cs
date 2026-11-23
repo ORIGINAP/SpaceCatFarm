@@ -56,7 +56,7 @@ public class CivFacility : TileItem, ICoverageArea
         CivEffect.Factory     => $"문명 시설 — 전기가 들어오면 {effectRadius}칸 안의 제련소 · 고양이 주방 · 퇴비통이 {FactorySpeed:0.#}배 빨리 일해요",
         CivEffect.Comms       => $"문명 시설 — 전기가 들어오면 이주 셔틀이 한 척 더 다녀요 (착륙장이 하나 더 있어야 해요 · 최대 {ShuttleService.MaxShuttles}척)",
         CivEffect.Observatory => "문명 시설 — 전기가 들어오면 날씨를 한 칸 더 멀리 내다보고, 오로라 · 유성우가 더 자주 와요",
-        CivEffect.Housing     => "문명 시설 — 전기가 들어오면 주민들이 살고, 셔틀이 고양이를 한 마리 더 태워 와요 (최대 4채)",
+        CivEffect.Housing     => $"문명 시설 — 전기가 들어오면 주민 {ResidentCamp.HabitatBeds}마리의 잠자리가 되고, 셔틀이 고양이를 한 마리 더 태워 와요 (최대 4채)",
         CivEffect.Control     => $"문명 시설 — 전기가 들어오면 셔틀 왕복이 {(1f - ShuttleService.ControlTripMult) * 100f:0}% 빨라지고 짐값이 {ShuttleService.ControlReward * 100f:0}% 늘어요",
         _                     => "문명 시설 — 전기가 들어오면 센터코어 발전 조건에 세어져요",
     };
@@ -97,7 +97,7 @@ public class CivFacility : TileItem, ICoverageArea
             if (f == null || f.effect != e || !f.IsPowered) continue;
             int dx = Mathf.Max(Mathf.Max(f.FootprintMin.x - cell.x, 0), cell.x - f.FootprintMax.x);
             int dy = Mathf.Max(Mathf.Max(f.FootprintMin.y - cell.y, 0), cell.y - f.FootprintMax.y);
-            if (dx + dy <= f.effectRadius) return true;
+            if (Mathf.Max(dx, dy) <= f.effectRadius) return true;
         }
         return false;
     }
@@ -110,7 +110,7 @@ public class CivFacility : TileItem, ICoverageArea
             if (f == null || f.effect != e || !f.IsPowered) continue;
             int dx = Mathf.Max(0, Mathf.Max(f.FootprintMin.x - tile.FootprintMax.x, tile.FootprintMin.x - f.FootprintMax.x));
             int dy = Mathf.Max(0, Mathf.Max(f.FootprintMin.y - tile.FootprintMax.y, tile.FootprintMin.y - f.FootprintMax.y));
-            if (dx + dy <= f.effectRadius) return true;
+            if (Mathf.Max(dx, dy) <= f.effectRadius) return true;
         }
         return false;
     }
@@ -130,7 +130,8 @@ public class CivFacility : TileItem, ICoverageArea
             if (f != null && f.effect == e && f.IsPowered) list.Add(f);
     }
 
-    public static float WorkSpeedFor(TileItem tile) => Covers(CivEffect.Factory, tile) ? FactorySpeed : 1f;
+    // 공장 곁 · 마을 축제 중엔 더 빨리
+    public static float WorkSpeedFor(TileItem tile) => (Covers(CivEffect.Factory, tile) ? FactorySpeed : 1f) * TownLife.WorkMult;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void Init() => placed.Clear();

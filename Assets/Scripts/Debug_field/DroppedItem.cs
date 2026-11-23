@@ -26,6 +26,12 @@ public class DroppedItem : MonoBehaviour
     private static readonly System.Collections.Generic.List<DroppedItem> active = new();
     private const float MergeRadius = 0.75f;
 
+    public long            NetId { get; set; }
+    public FarmingItemData Item     => itemData;
+    public int             Amount   => amount;
+    public bool            Thrown   => thrown;
+    public Vector2         Velocity => rb != null ? rb.linearVelocity : Vector2.zero;
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetStatics()
     {
@@ -43,7 +49,7 @@ public class DroppedItem : MonoBehaviour
             {
                 var d = active[i];
                 if (d == null) { active.RemoveAt(i); continue; }
-                if (d.itemData != item || d.thrown || d.isMagnetic) continue;
+                if (d.itemData != item || d.thrown || d.isMagnetic || d.NetId != 0) continue;
                 if (((Vector2)(d.transform.position - worldPos)).sqrMagnitude > MergeRadius * MergeRadius) continue;
                 d.amount += amount;
                 d.homing |= homing;
@@ -84,6 +90,30 @@ public class DroppedItem : MonoBehaviour
         return dropped;
     }
 
+    // 멀티에선 다른 참가자도 주울 수 있음
+    public static DroppedItem SpawnShared(FarmingItemData item, int amount, Vector3 worldPos)
+    {
+        bool net = NetDrops.Active;
+        var d = Spawn(item, amount, worldPos, null, merge: !net);
+        if (net) NetDrops.Share(d);
+        return d;
+    }
+
+    public static DroppedItem SpawnRemote(FarmingItemData item, int amount, Vector3 worldPos, Vector2 velocity, bool thrown)
+    {
+        var d = Spawn(item, amount, worldPos, null, merge: false);
+        if (d == null) return null;
+        d.thrown            = thrown;
+        d.rb.linearVelocity = velocity;
+        return d;
+    }
+
+    public void Vanish()
+    {
+        itemData = null;
+        Destroy(gameObject);
+    }
+
     private static float FitScale(Sprite icon)
     {
         if (icon == null) return 1f;
@@ -102,6 +132,7 @@ public class DroppedItem : MonoBehaviour
         Vector2 dir = toward - (Vector2)from;
         if (dir.sqrMagnitude < 0.01f) dir = Vector2.down;
         dropped.rb.linearVelocity = dir.normalized * DroppedItemManager.GetOrDefault().popSpeed * 2f;
+        NetDrops.Share(dropped);
         return dropped;
     }
 
@@ -124,7 +155,11 @@ public class DroppedItem : MonoBehaviour
         drag         = cfg.drag;
     }
 
-    private void OnDestroy() => active.Remove(this);
+    private void OnDestroy()
+    {
+        active.Remove(this);
+        if (NetId != 0) NetDrops.Forget(this);
+    }
 
     private void Update()
     {
@@ -168,6 +203,7 @@ public class DroppedItem : MonoBehaviour
         {
             Sfx.PlayAt(SfxId.Pickup, transform.position);
             GamepadRumble.Play(Haptic.Pickup);
+            if (NetId != 0) NetDrops.PickedUp(this);
             Destroy(gameObject);
             return;
         }
@@ -178,10 +214,11 @@ public class DroppedItem : MonoBehaviour
         rb.linearVelocity  = Vector2.zero;
         nextPickupAttempt  = Time.time + FullRetryDelay;
 
-        if (Time.time - lastFullNoticeTime > 3f)
+        // 가방이 계속 차 있으면 3초마다 같은 알림이 쌓여서 간격을 늘림
+        if (Time.time - lastFullNoticeTime > 20f)
         {
             lastFullNoticeTime = Time.time;
-            NotificationUI.Instance?.Show("인벤토리가 가득 찼습니다. 아이템이 바닥에 남아 있습니다.");
+            NotificationUI.Instance?.Show("가방이 가득 찼어요 — 물건은 바닥에 그대로 있어요 (상점에서 팔거나 창고에 넣어요)");
         }
     }
 }

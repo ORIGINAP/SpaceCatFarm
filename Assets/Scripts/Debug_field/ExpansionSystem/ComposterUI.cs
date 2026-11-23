@@ -267,7 +267,7 @@ public class ComposterUI : MonoBehaviour
         crt.sizeDelta = new Vector2(26f, 26f);
         crt.anchoredPosition = new Vector2(-13f, 1f);
 
-        var info = CuteUIKit.Text(transform, "퇴비를 들고 밭을 클릭하면 수확 3번 동안 작물이 1개씩 더 열리고 황금 작물 확률이 2배가 돼요. 자동파종기는 이어 준 창고의 퇴비를 알아서 뿌려요.",
+        var info = CuteUIKit.Text(transform, "퇴비를 밭에 주면 수확 3번 동안 작물이 1개씩 더 열리고 황금 작물 확률이 2배가 돼요. 자동파종기는 이어 준 창고의 퇴비를 알아서 뿌려요.",
                                   11f, CuteUIKit.CocoaSoft, FontStyles.Normal, TextAlignmentOptions.MidlineLeft);
         info.textWrappingMode = TextWrappingModes.Normal;
 

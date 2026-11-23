@@ -20,6 +20,7 @@ public class NetHost
         public int    ack, sentAck = -1;
         public readonly HashSet<Vector2Int> forcedTiles = new();
         public readonly HashSet<Vector2Int> forcedRocks = new();
+        public readonly HashSet<Vector2Int> hits        = new();
         public bool   forceGlobals;
         public Vector2 pos;
         public bool   hasPos;
@@ -104,6 +105,7 @@ public class NetHost
             worldSize  = (int)GameLaunchContext.PendingWorldSize,
             worldTheme = (int)GameLaunchContext.PendingWorldTheme,
             worldSeed  = GameLaunchContext.PendingWorldSeed,
+            legacyWorld = GameLaunchContext.LegacyWorld,
             gridWidth  = GridManager.Instance != null ? GridManager.Instance.GridWidth : 0,
             gridHeight = GridManager.Instance != null ? GridManager.Instance.GridHeight : 0,
             hostName   = PlayerCharacter.Name,
@@ -131,6 +133,8 @@ public class NetHost
         p.sentAck = p.ack;
         p.forcedTiles.Clear();
         p.forcedRocks.Clear();
+        p.hits.Clear();
+        NetDrops.SendAll(id);
         if (Lab.Active) Lab.OnPeerReady(id);
 
         NotificationUI.Instance?.Show($"{p.name}님이 도착했어요!");
@@ -332,6 +336,7 @@ public class NetHost
 
             case NetOpType.Mine:
                 FindRock(at)?.MineRemote(op.n);
+                NoteHit(at, except: id);
                 p.forcedRocks.Add(at);
                 break;
 
@@ -360,6 +365,12 @@ public class NetHost
             }
             case NetOpType.Quest:
                 QuestManager.Instance?.AddRemoteProgress((QuestObjectiveType)op.x, item, op.n);
+                break;
+            case NetOpType.Festival:
+                TownLife.Instance?.Hold();
+                break;
+            case NetOpType.ShuttleSeats:
+                TownLife.Instance?.SetSeats(op.n);
                 break;
 
             case NetOpType.ShuttleLoad:
@@ -426,6 +437,18 @@ public class NetHost
     {
         if (item == null || amount == 0) return;
         NetWire.SendJson(NetWire.Give, p.id, new GiveMsg { item = item.name, amount = amount });
+    }
+
+    public static void GiveTo(ulong id, FarmingItemData item, int amount)
+    {
+        if (Current != null && Current.peers.TryGetValue(id, out var p) && p.ready) Give(p, item, amount);
+    }
+
+    // 캐는 연출을 다른 사람에게도
+    public void NoteHit(Vector2Int rock, ulong except = ulong.MaxValue)
+    {
+        foreach (var p in peers.Values)
+            if (p.ready && p.id != except) p.hits.Add(rock);
     }
 
     public static void GiveAll(FarmingItemData item, int amount)
@@ -595,7 +618,7 @@ public class NetHost
         {
             if (!p.ready) continue;
             bool forced = p.forcedTiles.Count > 0 || p.forcedRocks.Count > 0 || p.forceGlobals;
-            if (!forced && p.ack == p.sentAck && shared.tiles.Count == 0 && shared.removed.Count == 0
+            if (!forced && p.hits.Count == 0 && p.ack == p.sentAck && shared.tiles.Count == 0 && shared.removed.Count == 0
                 && shared.rocks.Count == 0 && !shared.hasGlobals) continue;
 
             var msg = new DeltaMsg
@@ -603,6 +626,11 @@ public class NetHost
                 ack = p.ack, tiles = shared.tiles, removed = shared.removed, rocks = shared.rocks,
                 hasGlobals = shared.hasGlobals, globals = shared.globals,
             };
+            if (p.hits.Count > 0)
+            {
+                msg.hits = new List<Vector2Int>(p.hits);
+                p.hits.Clear();
+            }
             if (forced)
             {
                 msg.tiles   = new List<TileSave>(shared.tiles);

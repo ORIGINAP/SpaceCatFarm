@@ -24,8 +24,9 @@ public static class NetWire
     public const string Chat     = "wish.chat";
     public const string Look     = "wish.look";
     public const string Lab      = "wish.lab";
+    public const string Drop     = "wish.drop";
 
-    public static readonly string[] All = { Hello, Welcome, Ready, Snapshot, Delta, Op, Give, Pos, Roster, Guest, Notice, Storm, Chat, Look, Lab };
+    public static readonly string[] All = { Hello, Welcome, Ready, Snapshot, Delta, Op, Give, Pos, Roster, Guest, Notice, Storm, Chat, Look, Lab, Drop };
 
     public static void SendJson(string name, ulong to, object dto, bool compress = false)
         => SendBytes(name, to, Encode(dto, compress), NetworkDelivery.ReliableFragmentedSequenced);
@@ -90,6 +91,7 @@ public class WelcomeMsg
     public bool   ok;
     public string reason;
     public int    worldSize, worldTheme, worldSeed;
+    public bool   legacyWorld;
     public int    gridWidth, gridHeight;
     public string hostName;
     public bool   knownGuest;
@@ -112,6 +114,7 @@ public class DeltaMsg
     public List<TileSave>          tiles   = new();
     public List<LinkSave>          removed = new();
     public List<ResourceBlockSave> rocks   = new();
+    public List<Vector2Int>        hits    = new();
     public bool       hasGlobals;
     public NetGlobals globals = new();
 }
@@ -135,6 +138,7 @@ public class NetGlobals
     public List<ResidentSave> residents = new();
     public List<string> codexGolden = new(), codexDishes = new();
     public int    codexMilestones;
+    public int    festivalEnd = -1, festivalDay = -1, extraSeats;
 }
 
 [Serializable]

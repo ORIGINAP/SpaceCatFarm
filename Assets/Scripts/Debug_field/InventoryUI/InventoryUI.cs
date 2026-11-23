@@ -74,8 +74,19 @@ public class InventoryUI : MonoBehaviour
             Inventory.Instance.OnInventoryChanged -= RefreshAll;
     }
 
+    private TextMeshProUGUI trashNote;
+    private bool noteForPad;
+
+    private static string TrashNote()
+        => (Pad.Active ? "<b>휴지통</b>  칸을 고르고 X를 누르면 버려요" : "<b>휴지통</b>  끌어다 놓거나 Ctrl+클릭하면 버려요") + "\n마지막으로 버린 건 다시 꺼낼 수 있어요";
+
     private void Update()
     {
+        if (trashNote != null && noteForPad != Pad.Active)
+        {
+            noteForPad = Pad.Active;
+            trashNote.text = TrashNote();
+        }
         if (TextInputFocus.Active) return;
         if (GameInput.GetKeyDown(toggleKey) || (InputManager.Instance != null && InputManager.Instance.InventoryButton)) Toggle();
         if (isOpen && EscapeRouter.TryConsume(EscapeRouter.CancelPressed)) Toggle();
@@ -334,7 +345,7 @@ public class InventoryUI : MonoBehaviour
         trashSlot = slotGO.AddComponent<TrashSlotUI>();
         trashSlot.Setup(this);
 
-        var note = CuteUIKit.Text(row, "<b>휴지통</b>  끌어다 놓거나 Ctrl+클릭하면 버려요\n마지막으로 버린 건 다시 꺼낼 수 있어요",
+        var note = trashNote = CuteUIKit.Text(row, TrashNote(),
                                   12f, CuteUIKit.CocoaSoft, FontStyles.Normal);
         note.alignment        = TextAlignmentOptions.MidlineLeft;
         note.textWrappingMode = TextWrappingModes.Normal;

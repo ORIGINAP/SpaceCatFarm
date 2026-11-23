@@ -11,6 +11,12 @@ public static class GameLaunchContext
 
     public static int PendingWorldSeed = 0;
 
+    // 정화 개편 전 월드: 옛 토양 배치 · 정화 없음
+    public static bool LegacyWorld = false;
+
+    // 전시 데모 진행 중
+    public static bool DemoMode = false;
+
     public static CatLook PendingCharacter;
 
     public static int PendingGridWidth, PendingGridHeight;
@@ -26,6 +32,8 @@ public static class GameLaunchContext
         PendingWorldSize  = WorldSize.Middle;
         PendingWorldTheme = WorldTheme.Wasteland;
         PendingWorldSeed  = 0;
+        LegacyWorld       = false;
+        DemoMode          = false;
         PendingCharacter  = default;
         PendingGridWidth  = PendingGridHeight = 0;
         LaunchedFromMenu  = false;

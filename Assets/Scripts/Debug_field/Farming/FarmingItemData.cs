@@ -25,6 +25,9 @@ public class FarmingItemData : ScriptableObject
 
     public int Tier => Mathf.Clamp(tier, 1, MaxTier);
 
+    [Tooltip("장식이면 마을 매력 (0 = 장식 아님)")]
+    [Min(0)] public int charm = 0;
+
     [Header("Tile Item")]
     public GameObject tilePrefab;
     [Min(1)] public int tileWidth  = 1;
@@ -62,7 +65,18 @@ public class FarmingItemData : ScriptableObject
              "수확 도구는 드릴이 아니므로 채굴기 소켓에 끼울 수 없습니다.")]
     [Min(0)] public int harvestRadius = 0;
 
-    public bool IsDrill => itemType == FarmingItemType.Tool && harvestRadius <= 0;
+    [Tooltip("0보다 크면 물뿌리개: 클릭한 밭 둘레 이 칸 수(정사각형)에 물을 줘 성장이 빨라집니다")]
+    [Min(0)] public int waterRadius = 0;
+    [Tooltip("물뿌리개 물이 마르기까지 (초)")]
+    [Min(0f)] public float waterSeconds = 120f;
+    [Tooltip("0보다 크면 탐사 스캐너: 둘레 이 칸 수의 광맥 · 유적을 찾아 지도에 밝힙니다")]
+    [Min(0)] public int scanRadius = 0;
+    [Tooltip("스캐너 다시 쓰기까지 (초)")]
+    [Min(0f)] public float scanCooldown = 6f;
+
+    public bool IsDrill   => itemType == FarmingItemType.Tool && harvestRadius <= 0 && waterRadius <= 0 && scanRadius <= 0;
+    public bool IsWaterCan => itemType == FarmingItemType.Tool && waterRadius > 0;
+    public bool IsScanner  => itemType == FarmingItemType.Tool && scanRadius > 0;
 
     [Header("Equipment")]
     [Tooltip("장착 시 부여할 스탯 보너스 목록")]

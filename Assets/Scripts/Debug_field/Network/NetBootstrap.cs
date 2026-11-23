@@ -422,6 +422,7 @@ public class NetBootstrap : MonoBehaviour
             else client?.OnChat(NetWire.ReadBytes(r));
         });
         Handle(cmm, NetWire.Lab,   (id, r) => LabNet.Receive(id, NetWire.ReadBytes(r)));
+        Handle(cmm, NetWire.Drop,  (id, r) => NetDrops.Receive(id, NetWire.ReadBytes(r)));
 
         Handle(cmm, NetWire.Welcome,  (_, r) => client?.OnWelcome(NetWire.ReadBytes(r)));
         Handle(cmm, NetWire.Snapshot, (_, r) => client?.OnSnapshot(NetWire.ReadBytes(r)));

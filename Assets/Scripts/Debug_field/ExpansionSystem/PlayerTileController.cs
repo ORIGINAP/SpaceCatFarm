@@ -25,6 +25,7 @@ public class PlayerTileController : MonoBehaviour
     private bool blockRemoveUntilRelease = false;
 
     private bool blockActionUntilRelease = false;
+    private float nextImpureHint;
 
     private Player        player;
     private float         baseMoveSpeed = 5f;
@@ -123,6 +124,14 @@ public class PlayerTileController : MonoBehaviour
                 if (cat != null && ResidentBond.TakesClick(SelectedItem))
                 {
                     InteractResident(cat);
+                    blockActionUntilRelease = true;
+                    return;
+                }
+
+                var landmark = BiomeLandmark.At(worldPos);
+                if (landmark != null)
+                {
+                    landmark.TryOpen(transform.position);
                     blockActionUntilRelease = true;
                     return;
                 }
@@ -254,6 +263,8 @@ public class PlayerTileController : MonoBehaviour
         if (Inventory.Instance == null || !Inventory.Instance.HasItem(SelectedItem)) return false;
         if (SelectedItem.itemType == FarmingItemType.Tile) return TryPlaceTile(gridPos);
         if (SelectedItem.itemType == FarmingItemType.Seed) return TryPlantSeed(gridPos);
+        if (SelectedItem.IsWaterCan) return ToolActions.Water(SelectedItem, gridPos, transform.position);
+        if (SelectedItem.IsScanner) return ToolActions.Scan(SelectedItem, transform.position);
         return SelectedItem.IsFertilizer && TryFertilize(gridPos);
     }
 
@@ -280,6 +291,11 @@ public class PlayerTileController : MonoBehaviour
         if (tile is CenterCore plant)
         {
             OpenCentralPlant(plant, InteractRange);
+            return true;
+        }
+        if (tile is ResidentCamp camp)
+        {
+            NotificationUI.Instance?.Show(camp.Report);
             return true;
         }
         if (tile is SolarPanel solar)
@@ -673,7 +689,10 @@ public class PlayerTileController : MonoBehaviour
         {
             if (!IsAnyUIOpen())
             {
-                if (im.PadResidentTarget != null) InteractResident(im.PadResidentTarget);
+                var near = BiomeLandmark.Nearest(transform.position, true);
+                if (near != null && Vector2.Distance(transform.position, near.transform.position) <= BiomeLandmark.OpenRange)
+                    near.TryOpen(transform.position);
+                else if (im.PadResidentTarget != null) InteractResident(im.PadResidentTarget);
                 else InteractWith(im.PadInteractTarget);
             }
             return;
@@ -687,6 +706,13 @@ public class PlayerTileController : MonoBehaviour
         if (cat != null)
         {
             InteractResident(cat);
+            return;
+        }
+
+        var landmark = BiomeLandmark.At(GetWorldMousePos());
+        if (landmark != null)
+        {
+            landmark.TryOpen(transform.position);
             return;
         }
 
@@ -860,8 +886,11 @@ public class PlayerTileController : MonoBehaviour
             Sfx.PlayAt(SfxId.Place, placed.transform.position);
             GamepadRumble.Play(Haptic.Place);
         }
-        else
+        else if (!GridManager.Instance.IsPureFor(gridPos, SelectedItem.tileWidth, SelectedItem.tileHeight, SelectedItem.tilePrefab)
+                 && Time.unscaledTime >= nextImpureHint)
         {
+            nextImpureHint = Time.unscaledTime + 2.5f;
+            NotificationUI.Instance?.Show("오염된 땅이에요 — 정화탑을 세우거나 센터코어를 키워 정화해요", NotificationUI.WarningColor);
         }
         return placed != null;
     }

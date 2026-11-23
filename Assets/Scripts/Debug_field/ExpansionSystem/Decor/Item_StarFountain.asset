@@ -1,0 +1,44 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2b0a100f391993b48942a788e8c92762, type: 3}
+  m_Name: Item_StarFountain
+  m_EditorClassIdentifier: Assembly-CSharp::FarmingItemData
+  itemName: "\uBCC4\uBE5B \uBD84\uC218"
+  description: "\uAE08\uBE5B \uBCC4\uC774 \uBB3C\uC744 \uBFDC\uB294 \uB3CC \uBD84\uC218\uC608\uC694.
+    \uB9C8\uC744 \uAD11\uC7A5\uC5D0 \uB531\uC774\uC5D0\uC694."
+  icon: {fileID: 21300000, guid: 95ef75d2eb47f0b409f425eeebb6ae7e, type: 3}
+  itemType: 0
+  basePrice: 40000
+  hideFromShop: 0
+  unlockCoreLevel: 5
+  tier: 4
+  charm: 30
+  tilePrefab: {fileID: 5822046919965082035, guid: 79df67d726258404d9cebcd1b389b0d4, type: 3}
+  tileWidth: 2
+  tileHeight: 2
+  seedData: {fileID: 0}
+  minToolGrade: 1
+  canUseFuel: 0
+  fuelValue: 20
+  isCropProduct: 0
+  goldenVariant: {fileID: 0}
+  isGolden: 0
+  fertilizerCharges: 0
+  toolGrade: 1
+  miningPower: 1
+  miningSpeed: 1
+  harvestRadius: 0
+  waterRadius: 0
+  waterSeconds: 120
+  scanRadius: 0
+  scanCooldown: 6
+  equipBonuses: []

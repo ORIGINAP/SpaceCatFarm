@@ -407,6 +407,15 @@ public static class GamepadPointer
             else { GamepadPanels.SetRingOpen(ring, false); GamepadPanels.SetRingOpen(0, true); }
         }
 
+        // 가방 칸의 X는 휴지통
+        if (Pad.Down(PadButton.X) && ring >= 0 && !carrying && (current == null || current.GetComponent<InventorySlotUI>() == null))
+        {
+            bool open = GamepadPanels.IsRingOpen(GamepadPanels.ShuttleRing);
+            if (!open) GamepadPanels.SetRingOpen(ring, false);
+            GamepadPanels.SetRingOpen(GamepadPanels.ShuttleRing, !open);
+            GamepadRumble.Play(Haptic.UiTab);
+        }
+
         if (ring >= 0 && (Pad.Down(PadButton.LB) || Pad.Down(PadButton.RB)))
         {
             ReleaseCarry();

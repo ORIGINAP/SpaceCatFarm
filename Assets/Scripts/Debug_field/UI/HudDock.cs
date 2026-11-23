@@ -8,6 +8,7 @@ public class HudDock : MonoBehaviour
     public enum Slot { Bag, Craft, Shop, Shuttle, Research, Journey }
 
     private const float ButtonW = 58f, ButtonH = 56f, Gap = 6f, Margin = 14f;
+    private const float KeySize = 9f, PadKeySize = 12f;
 
     private static HudDock instance;
 
@@ -20,6 +21,8 @@ public class HudDock : MonoBehaviour
     private Image           orderDot;
     private TextMeshProUGUI orderDotText;
     private float           nextSlowCheck;
+    private readonly Dictionary<Slot, TextMeshProUGUI> keyLabels = new();
+    private bool            keysForPad;
 
     public static bool Visible => instance != null && instance.canvas != null && instance.canvas.enabled;
 
@@ -30,6 +33,8 @@ public class HudDock : MonoBehaviour
     public static Sprite FlaskIcon  => Icons.Flask;
     public static Sprite RocketIcon => Icons.Rocket;
     public static Sprite CatIcon    => Icons.Cat;
+    public static Sprite FlagIcon   => Icons.Flag;
+    public static Sprite HammerIcon => Icons.Hammer;
 
     public static string KeyOf(Slot slot) => slot switch
     {
@@ -41,14 +46,28 @@ public class HudDock : MonoBehaviour
         _             => "T",
     };
 
+    public static string PadKeyOf(Slot slot) => slot switch
+    {
+        Slot.Bag      => "Y",
+        Slot.Craft    => "↑",
+        Slot.Shop     => "→",
+        Slot.Shuttle  => "X",
+        Slot.Journey  => "↓꾹",
+        _             => "←",
+    };
+
+    // 패드 안내 막대는 이 위로
+    public static float HintBarY => Margin + ButtonH + Gap + 2f;
+
     public static void Create()
     {
-        if (instance != null || MobileMode.Active) return;
+        if (instance != null) return;
         var go = new GameObject("HudDock", typeof(RectTransform));
         // 창보다 아래 층
         UIStyleKit.CreateOverlayCanvas(go, -1);
         instance = go.AddComponent<HudDock>();
         instance.canvas = go.GetComponent<Canvas>();
+        instance.canvas.enabled = !MobileMode.Active;
         instance.Build();
     }
 
@@ -60,8 +79,20 @@ public class HudDock : MonoBehaviour
     private void Update()
     {
         var ptc  = PlayerTileController.Instance;
-        bool show = ptc != null && !Pad.Active && !PlayerTileController.IsPauseMenuOpen();
+        // 창에서는 십자키가 이동이라 숨김
+        bool show = ptc != null && !(Pad.Active && Pad.UIMode) && !PlayerTileController.IsPauseMenuOpen() && !LabPhotoMode.HidesHud;
+        // 폰은 패드를 쓸 때만 (터치는 MobileHud 버튼)
+        if (MobileMode.Active && !Pad.Active) show = false;
         if (canvas.enabled != show) canvas.enabled = show;
+        if (keysForPad != Pad.Active)
+        {
+            keysForPad = Pad.Active;
+            foreach (var pair in keyLabels)
+            {
+                pair.Value.text     = keysForPad ? PadKeyOf(pair.Key) : KeyOf(pair.Key);
+                pair.Value.fontSize = keysForPad ? PadKeySize : KeySize;
+            }
+        }
         if (!show || Time.unscaledTime < nextSlowCheck) return;
         nextSlowCheck = Time.unscaledTime + 0.5f;
 
@@ -153,7 +184,8 @@ public class HudDock : MonoBehaviour
         lrt.sizeDelta = new Vector2(0f, 16f);
         text.raycastTarget = false;
 
-        var key = CuteUIKit.Pill(rt, KeyOf(slot), CuteUIKit.Cocoa, Color.white, 9f, 7, new RectOffset(4, 4, 0, 0), out _, fitSelf: true);
+        var key = CuteUIKit.Pill(rt, KeyOf(slot), CuteUIKit.Cocoa, Color.white, KeySize, 7, new RectOffset(4, 4, 0, 0), out var keyLabel, fitSelf: true);
+        keyLabels[slot] = keyLabel;
         key.anchorMin = key.anchorMax = key.pivot = new Vector2(0f, 1f);
         key.anchoredPosition = new Vector2(-4f, 5f);
         key.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;

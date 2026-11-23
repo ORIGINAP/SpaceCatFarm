@@ -101,7 +101,14 @@ public class CatKitchen : TileItem
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetCache() => menuCache = null;
+    private static void ResetCache()
+    {
+        menuCache = null;
+        OnAnyAutoDish = null;
+    }
+
+    // 창고로 돌려놓은 요리 수
+    public static event System.Action<int> OnAnyAutoDish;
 
     private void Update()
     {
@@ -251,6 +258,7 @@ public class CatKitchen : TileItem
             int added = storage.AddItem(outputItem, outputCount);
             if (added <= 0) continue;
             TakeOutput(added, out _);
+            OnAnyAutoDish?.Invoke(added);
             flashBeam?.Flash(transform.position, storage.transform.position, CookBeamColor, 0.05f, 0.4f);
         }
     }

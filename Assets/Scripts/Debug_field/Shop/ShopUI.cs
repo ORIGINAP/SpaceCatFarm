@@ -32,12 +32,17 @@ public class ShopUI : MonoBehaviour, IBeginDragHandler, IDragHandler
     private static readonly int[] BuyAmounts  = { 1, 10, 50 };
     private static readonly int[] SellAmounts = { 1, 10, 0 };
     private static int buyChoice, sellChoice = 2;
+    private static ShopTab tab;
+
+    private static readonly ShopTab[] Tabs = { ShopTab.Seeds, ShopTab.Decor, ShopTab.Workshop };
+    private static readonly string[] TabLabels = { "씨앗", "꾸미기", "공방" };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetStatics()
     {
         buyChoice = 0;
         sellChoice = 2;
+        tab = ShopTab.Seeds;
     }
 
     private static readonly string[] Thanks = { "고마워요!", "싱싱해요!", "좋은 작물이에요!", "잘 팔았어요!" };
@@ -63,6 +68,8 @@ public class ShopUI : MonoBehaviour, IBeginDragHandler, IDragHandler
     private ScrollRect tileScroll;
     private BagView    bagView;
     private Button[]   buyAmountBtns, sellAmountBtns;
+    private Button[]   tabBtns;
+    private TextMeshProUGUI[] tabTexts;
     private Button     undoBtn;
     private TextMeshProUGUI undoText;
     private GameObject footNote;
@@ -81,7 +88,7 @@ public class ShopUI : MonoBehaviour, IBeginDragHandler, IDragHandler
         public RectTransform   rt, slot;
         public CanvasGroup     cg;
         public Image           fill;
-        public GameObject      ownedBadge, pricePill, lockPill, newPill;
+        public GameObject      ownedBadge, pricePill, lockPill, newPill, charmPill;
         public TextMeshProUGUI owned, price, lockText;
         public int             look = -1;
     }
@@ -257,11 +264,55 @@ public class ShopUI : MonoBehaviour, IBeginDragHandler, IDragHandler
         }
     }
 
+    // 패드 LT/RT: 열린 가게들 → 가방 순으로 돎
     public void CycleTab(int delta)
     {
-        padOnBag = !padOnBag;
+        var ring = new List<int>();
+        foreach (var t in Tabs) if (ShopManager.TabOpen(t)) ring.Add((int)t);
+        ring.Add(-1);
+        int at = ring.IndexOf(padOnBag ? -1 : (int)tab);
+        if (at < 0) at = 0;
+        int next = ring[(at + (delta >= 0 ? 1 : -1) + ring.Count) % ring.Count];
+        padOnBag = next < 0;
+        if (!padOnBag && (ShopTab)next != tab) ShowTab((ShopTab)next);
         PlaceGamepadDefault();
         Sfx.Play(SfxId.UiClick);
+    }
+
+    public void ShowTab(ShopTab t)
+    {
+        if (!ShopManager.TabOpen(t))
+        {
+            Fail(tabBtns != null ? tabBtns[(int)t].transform as RectTransform : null,
+                 $"{ItemCellUI.Eun(ShopManager.TabName(t))} 문명 Lv.{ShopManager.TabLevel(t)}에 열려요 — 이주해 온 주민들이 가게를 열어요");
+            return;
+        }
+        tab = t;
+        PaintTabs();
+        RebuildTiles();
+        ItemCellUI.ResetScroll(tileScroll);
+        holdLineUntil = 0f;
+        SayIdle();
+        if (IsOpen) Sfx.Play(SfxId.UiClick);
+    }
+
+    private void PaintTabs()
+    {
+        if (tabBtns == null) return;
+        for (int i = 0; i < tabBtns.Length; i++)
+        {
+            bool open = ShopManager.TabOpen(Tabs[i]);
+            CuteUIKit.ApplyButtonColors(tabBtns[i], Tabs[i] == tab ? CuteUIKit.Strawberry : open ? CuteUIKit.ButtonLatte : CuteUIKit.EmptiedFill);
+            tabTexts[i].text = open ? TabLabels[i] : $"{TabLabels[i]} Lv.{ShopManager.TabLevel(Tabs[i])}";
+        }
+    }
+
+    // 다른 탭에 있으면 그 탭 버튼 (길잡이용)
+    public RectTransform TabRectFor(FarmingItemData item)
+    {
+        if (item == null || tabBtns == null) return null;
+        var t = ShopManager.TabOf(item);
+        return t == tab ? null : tabBtns[(int)t].transform as RectTransform;
     }
 
     private void PlaceGamepadDefault()
@@ -386,8 +437,25 @@ public class ShopUI : MonoBehaviour, IBeginDragHandler, IDragHandler
     private void BuildShopPane(Transform body)
     {
         var pane = ItemCellUI.Pane("ShopPane", body);
-        var header = ItemCellUI.PaneHeader(pane, "씨앗 가게", CuteUIKit.ButterSoft, CuteUIKit.AmberText, "누르면 사요", ShopW + 12f, fontAsset, out _);
+        // 가게 탭 + 한 번에 살 개수
+        var header = ItemCellUI.HRow("Header", pane, 6f, TextAnchor.MiddleLeft);
+        var hle = header.gameObject.AddComponent<LayoutElement>();
+        hle.preferredWidth  = ShopW + 12f;
+        hle.preferredHeight = hle.minHeight = 26f;
+        tabBtns  = new Button[Tabs.Length];
+        tabTexts = new TextMeshProUGUI[Tabs.Length];
+        for (int i = 0; i < Tabs.Length; i++)
+        {
+            var t = Tabs[i];
+            tabBtns[i]  = CuteUIKit.Button(header, TabLabels[i], CuteUIKit.ButtonLatte, () => ShowTab(t), 92f, 26f, 12f);
+            tabTexts[i] = tabBtns[i].GetComponentInChildren<TextMeshProUGUI>(true);
+            if (fontAsset != null) tabTexts[i].font = fontAsset;
+        }
+        var spacer = new GameObject("Spacer", typeof(RectTransform));
+        spacer.transform.SetParent(header, false);
+        spacer.AddComponent<LayoutElement>().flexibleWidth = 1f;
         buyAmountBtns = ItemCellUI.AmountPicker(header, BuyAmounts, buyChoice, fontAsset, k => PickAmount(false, k));
+        PaintTabs();
 
         float h = TileRows * TileH + (TileRows - 1) * TileGap;
         tileGrid = ItemCellUI.ScrollGrid(pane, "Seeds", ShopW, h, new Vector2(TileW, TileH), TileGap, TileCols, out tileScroll);
@@ -403,11 +471,17 @@ public class ShopUI : MonoBehaviour, IBeginDragHandler, IDragHandler
         var shop = ShopManager.Instance;
         if (shop == null) return;
 
+        if (!ShopManager.TabOpen(tab)) tab = ShopTab.Seeds;
+        PaintTabs();
         var stock = new List<FarmingItemData>();
-        foreach (var item in shop.CurrentStock) if (item != null) stock.Add(item);
-        stock.Sort((a, b) => a.unlockCoreLevel != b.unlockCoreLevel ? a.unlockCoreLevel.CompareTo(b.unlockCoreLevel)
-                           : a.basePrice != b.basePrice ? a.basePrice.CompareTo(b.basePrice)
-                           : string.CompareOrdinal(a.itemName, b.itemName));
+        foreach (var item in shop.CurrentStock) if (item != null && ShopManager.TabOf(item) == tab) stock.Add(item);
+        stock.Sort((a, b) =>
+        {
+            int la = shop.RequiredCoreLevel(a), lb = shop.RequiredCoreLevel(b);
+            return la != lb ? la.CompareTo(lb)
+                 : a.basePrice != b.basePrice ? a.basePrice.CompareTo(b.basePrice)
+                 : string.CompareOrdinal(a.itemName, b.itemName);
+        });
         foreach (var item in stock) tiles.Add(BuildTile(item, tileGrid));
 
         RefreshTiles();
@@ -468,6 +542,17 @@ public class ShopUI : MonoBehaviour, IBeginDragHandler, IDragHandler
         fresh.anchoredPosition = new Vector2(3f, -3f);
         fresh.localRotation    = Quaternion.Euler(0f, 0f, 8f);
         t.newPill = fresh.gameObject;
+
+        // 장식은 마을 매력 표시
+        if (item.charm > 0)
+        {
+            var charm = CuteUIKit.Pill(go.transform, $"★{item.charm}", CuteUIKit.LavenderTag, CuteUIKit.LavenderText, 10f, 8, new RectOffset(5, 5, 1, 1), out var charmText, fitSelf: true);
+            if (fontAsset != null) charmText.font = fontAsset;
+            charm.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+            charm.anchorMin = charm.anchorMax = charm.pivot = new Vector2(0f, 1f);
+            charm.anchoredPosition = new Vector2(4f, -4f);
+            t.charmPill = charm.gameObject;
+        }
         return t;
     }
 
@@ -475,6 +560,7 @@ public class ShopUI : MonoBehaviour, IBeginDragHandler, IDragHandler
     {
         var shop = ShopManager.Instance;
         if (shop == null) return;
+        PaintTabs();
         long coins = CurrencyManager.Instance != null ? CurrencyManager.Instance.Currency : 0;
         foreach (var t in tiles)
         {
@@ -652,6 +738,19 @@ public class ShopUI : MonoBehaviour, IBeginDragHandler, IDragHandler
 
     private void SayIdle()
     {
+        if (tab == ShopTab.Decor)
+        {
+            int charm = TownLife.Charm;
+            SetLine($"장식을 사서 마을에 놓으면 마을 매력이 올라 셔틀 짐값이 늘어요 · 지금 매력 ★{charm} → 짐값 +{TownLife.Percent(TownLife.CharmBonus)}%"
+                    + (Pad.Active ? " · LT/RT로 가게 / 가방" : ""));
+            return;
+        }
+        if (tab == ShopTab.Workshop)
+        {
+            SetLine($"주민 기술자들이 만든 재료예요 · 캐고 녹이는 시간을 코인으로 아껴요 (재료값 ×{ShopManager.WorkshopMultiplier:0})"
+                    + (Pad.Active ? " · LT/RT로 가게 / 가방" : ""));
+            return;
+        }
         float boost = GameEventManager.CropSellMultiplier;
         string line = Pad.Active ? "A로 씨앗을 사고, 가방의 작물을 팔아요 · LT/RT로 가게 / 가방"
                                  : "씨앗을 누르면 사고, 가방의 작물 · 요리를 누르면 팔아요!";
@@ -708,7 +807,8 @@ public class ShopUI : MonoBehaviour, IBeginDragHandler, IDragHandler
             if (lockReason != null) { SetLine(LockedLine(item, lockReason)); return; }
             long coins = CurrencyManager.Instance != null ? CurrencyManager.Instance.Currency : 0;
             int n = (int)System.Math.Min(BuyAmounts[buyChoice], coins / Mathf.Max(1, price));
-            string fresh = IsNew(item) ? " · <color=#F7879F>아직 안 길러 본 작물!</color>" : "";
+            string fresh = IsNew(item) ? " · <color=#F7879F>아직 안 길러 본 작물!</color>"
+                         : item.charm > 0 ? $" · <color=#6E57B5>매력 ★{item.charm}</color>" : "";
             SetLine(n <= 0 ? $"{item.itemName} — 1개 {price:N0}코인 <color=#C9485B>(코인이 모자라요)</color>"
                            : $"{item.itemName} — 1개 {price:N0}코인 · {PressWord} {n}개 사요 ({(long)price * n:N0}코인){fresh}");
             return;
@@ -738,13 +838,17 @@ public class ShopUI : MonoBehaviour, IBeginDragHandler, IDragHandler
 
     private static string LockedLine(FarmingItemData item, string lockReason)
     {
-        if (item.unlockCoreLevel > CenterCore.CurrentLevel)
-            return $"{ItemCellUI.Eun(item.itemName)} 문명 Lv.{item.unlockCoreLevel}에 열려요 — 다음 단계는 여정(L)에서 볼 수 있어요";
+        int level = ShopManager.Instance != null ? ShopManager.Instance.RequiredCoreLevel(item) : item.unlockCoreLevel;
+        if (level > CenterCore.CurrentLevel)
+            return $"{ItemCellUI.Eun(item.itemName)} 문명 Lv.{level}에 열려요 — 다음 단계는 여정(L)에서 볼 수 있어요";
         return $"{ItemCellUI.Eun(item.itemName)} 아직 살 수 없어요 ({lockReason})";
     }
 
     private static string LockLabel(FarmingItemData item, string lockReason)
-        => item.unlockCoreLevel > CenterCore.CurrentLevel ? $"문명 Lv.{item.unlockCoreLevel}" : lockReason.Replace(" 필요", "");
+    {
+        int level = ShopManager.Instance != null ? ShopManager.Instance.RequiredCoreLevel(item) : item.unlockCoreLevel;
+        return level > CenterCore.CurrentLevel ? $"문명 Lv.{level}" : lockReason.Replace(" 필요", "");
+    }
 
     private static string WhyNotSellable(FarmingItemData item)
     {

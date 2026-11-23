@@ -50,7 +50,7 @@ public static class FarmConditions
         }
     }
 
-    public static bool IsWatered(Vector2Int cell) => WeatherManager.IsRaining || CivFacility.Covers(CivEffect.Water, cell);
+    public static bool IsWatered(Vector2Int cell) => WeatherManager.IsRaining || CivFacility.Covers(CivEffect.Water, cell) || ToolActions.HandWatered(cell);
 
     public static bool InGreenhouse(Vector2Int cell) => CivFacility.Covers(CivEffect.Greenhouse, cell);
 
@@ -70,9 +70,10 @@ public static class FarmConditions
         }
 
         if (IsWatered(cell))
-            Add(WeatherManager.IsRaining ? "별비" : "급수탑 물", trait == CropTrait.WaterLover ? WaterLoverMult : WaterMult);
+            Add(WeatherManager.IsRaining ? "별비" : CivFacility.Covers(CivEffect.Water, cell) ? "급수탑 물" : "물뿌리개", trait == CropTrait.WaterLover ? WaterLoverMult : WaterMult);
         if (InGreenhouse(cell)) Add("온실", GreenhouseMult);
         Add("성장 촉진기", GrowthBooster.MultiplierAt(cell));
+        if (Soil.Suits(plot)) Add(Soil.Name(plot.SoilKind), Soil.GrowthMult);
 
         bool night = IsNight;
         switch (trait)
@@ -90,6 +91,7 @@ public static class FarmConditions
 
         float tech = TechTreeManager.Instance != null ? TechTreeManager.Instance.CropGrowthMult : 1f;
         Add("성장 연구", tech);
+        Add("마을 축제", TownLife.GrowthMult);
         return m;
     }
 
@@ -108,13 +110,26 @@ public static class FarmConditions
 
     public static int RollExtraCrops(PlantTile plot, bool fertile)
     {
-        var seed = plot != null ? plot.CurrentSeed : null;
-        if (seed == null) return 0;
-        int extra = fertile ? (seed.trait == CropTrait.Hearty ? 2 : 1) : 0;
-        float chance = TraitBonusChance(plot) + TechTreeManager.ExtraYieldChance;
+        int extra = SureExtraCrops(plot, fertile, out float chance);
+        if (chance <= 0f) return extra;
         // 정수부는 확정, 나머지는 확률
         extra += Mathf.FloorToInt(chance);
         if (Random.value < chance - Mathf.Floor(chance)) extra++;
+        return extra;
+    }
+
+    // 창고 자리를 미리 볼 때 쓰는 가장 많이 나올 때의 추가 수확
+    public static int MaxExtraCrops(PlantTile plot, bool fertile)
+        => SureExtraCrops(plot, fertile, out float chance) + Mathf.CeilToInt(chance);
+
+    private static int SureExtraCrops(PlantTile plot, bool fertile, out float chance)
+    {
+        chance = 0f;
+        var seed = plot != null ? plot.CurrentSeed : null;
+        if (seed == null) return 0;
+        int extra = fertile ? (seed.trait == CropTrait.Hearty ? 2 : 1) : 0;
+        if (Soil.Suits(plot)) extra += Soil.ExtraCrops;
+        chance = TraitBonusChance(plot) + TechTreeManager.ExtraYieldChance;
         return extra;
     }
 

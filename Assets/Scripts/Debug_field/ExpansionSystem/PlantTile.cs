@@ -46,8 +46,9 @@ public class PlantTile : TileItem
     [SerializeField] private Color poweredColor   = Color.white;
     [SerializeField] private Color unpoweredColor = new Color(0.7f, 0.7f, 0.75f, 1f);
 
-    private static readonly Color WetTint     = new Color(0.78f, 0.86f, 1f, 1f);
-    private static readonly Color FertileTint = new Color(0.86f, 0.74f, 0.62f, 1f);
+    // 흙이 탁해지지 않게 조금 옅게
+    private static readonly Color WetTint     = new Color(0.82f, 0.89f, 1f, 1f);
+    private static readonly Color FertileTint = new Color(0.9f, 0.8f, 0.7f, 1f);
 
     [Header("우주 폭풍 파괴 연출")]
     [Tooltip("파괴 전 흔들리는 연출 지속 시간(초)")]
@@ -70,6 +71,7 @@ public class PlantTile : TileItem
     public bool CanGrow => isPowered || (currentSeed != null && currentSeed.trait == CropTrait.Shade);
 
     public bool  IsPowered        => isPowered;
+    public SoilType SoilKind      => Soil.At(GridPosition);
     public int   Fertility        => fertility;
     public bool  IsFertile        => fertility > 0;
     public float GrowthMultiplier => growthMultiplier;
@@ -209,6 +211,8 @@ public class PlantTile : TileItem
         stormDestroyCoroutine = StartCoroutine(StormBlowRoutine());
         return true;
     }
+
+    public void RefreshNow() => RefreshFactors();
 
     private void RefreshFactors()
     {

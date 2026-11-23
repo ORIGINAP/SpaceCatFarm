@@ -23,6 +23,7 @@ public class ResourceExtractor : TileItem
     private ResourceBlock targetBlock;
     private Coroutine     extractCoroutine;
     private FlashBeam     flashBeam;
+    private LineRenderer  rangeRing;
 
     public FarmingItemData EquippedDrill => equippedDrill;
 
@@ -68,7 +69,7 @@ public class ResourceExtractor : TileItem
         if (IsGhost) return;
         FindTargetBlock();
 
-        WorldCircleOutline.Create(transform, searchRadius, rangeOutlineColor, rangeOutlineWidth);
+        rangeRing = WorldCircleOutline.Create(transform, searchRadius, rangeOutlineColor, rangeOutlineWidth);
         flashBeam = FlashBeam.Attach(transform, FlashBeam.Kind.Mining);
         LinkRules.HintOnPlace(this);
 
@@ -85,7 +86,7 @@ public class ResourceExtractor : TileItem
 
     private void FindTargetBlock()
     {
-        var hits = Physics2D.OverlapCircleAll(transform.position, searchRadius);
+        var hits = Physics2D.OverlapBoxAll(transform.position, Vector2.one * searchRadius * 2f, 0f);
         ResourceBlock best = null, fallback = null;
         float bestD = float.MaxValue, fallbackD = float.MaxValue;
         foreach (var hit in hits)
@@ -108,12 +109,20 @@ public class ResourceExtractor : TileItem
         if (isConnected) connectedBlockName = targetBlock.name;
     }
 
-    private bool HasRoomFor(FarmingItemData item)
+    private bool HasRoomFor(FarmingItemData item, out bool viaStorage)
     {
+        viaStorage = false;
         if (item == null) return false;
+        // 광석을 받는 창고에 이었으면 창고 자리만 봄 — 한 번 캔 양이 다 들어갈 때만 캐고, 아니면 쉼
+        int room = 0;
         for (int i = 0; i < Links.Count; i++)
-            if (Links[i] is ItemStorage storage && storage.Accepts(item) && storage.HasSpace)
-                return true;
+        {
+            if (Links[i] is not ItemStorage storage || !storage.Accepts(item)) continue;
+            viaStorage = true;
+            if (storage.IsUnlimited) return true;
+            room += storage.Capacity - storage.TotalCount;
+        }
+        if (viaStorage) return room >= EffectiveAmount;
         return Inventory.Instance != null && Inventory.Instance.CanAddItem(item);
     }
 
@@ -139,9 +148,10 @@ public class ResourceExtractor : TileItem
                 continue;
 
             // 넣을 곳 없으면 이번 주기 쉼
-            if (!HasRoomFor(targetBlock.DropItem))
+            if (!HasRoomFor(targetBlock.DropItem, out bool viaStorage))
             {
                 connectedBlockName = "보관 공간 없음";
+                if (viaStorage) MachineFarm.NoticeFull(this, "채굴기", false);
                 continue;
             }
 
@@ -154,7 +164,7 @@ public class ResourceExtractor : TileItem
             int remaining = TrySupplyToStorage(item, amount);
 
             if (remaining > 0)
-                Inventory.Instance?.AddItemOrDrop(item, remaining, transform.position + Vector3.down * 0.4f);
+                Inventory.Instance?.AddItemOrDropFrom(transform.position, item, remaining, transform.position + Vector3.down * 0.4f);
         }
     }
 
@@ -177,6 +187,8 @@ public class ResourceExtractor : TileItem
     private void Update()
     {
         if (IsGhost) return;
+        // 범위 원은 가리키거나 채굴기를 들었을 때만
+        if (rangeRing != null) rangeRing.enabled = WorldHover.ShowRange(this);
 
         if (targetBlock == null && isConnected)
         {
@@ -189,7 +201,7 @@ public class ResourceExtractor : TileItem
     private void OnDrawGizmosSelected()
     {
         UnityEditor.Handles.color = Color.cyan;
-        UnityEditor.Handles.DrawWireDisc(transform.position, Vector3.forward, searchRadius);
+        UnityEditor.Handles.DrawWireCube(transform.position, Vector3.one * searchRadius * 2f);
     }
 #endif
 }

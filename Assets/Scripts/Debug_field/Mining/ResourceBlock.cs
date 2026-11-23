@@ -126,7 +126,7 @@ public class ResourceBlock : MonoBehaviour
         b = gm.WorldToGrid(new Vector3(center.x + 1.2f, center.y + 0.6f));
         for (int y = a.y; y <= b.y; y++)
         for (int x = a.x; x <= b.x; x++)
-            if (terrain.IsCellBlocked(new Vector2Int(x, y))) return false;
+            if (terrain.IsCellBlocked(new Vector2Int(x, y)) || terrain.SoilConfig(x, y, out _) != 0) return false;
         return true;
     }
 
@@ -280,9 +280,6 @@ public class ResourceBlock : MonoBehaviour
 
         OnAnyResourceMined?.Invoke(data.dropItem, extracted);
 
-        if (shakeCoroutine != null) StopCoroutine(shakeCoroutine);
-        shakeCoroutine = StartCoroutine(Shake());
-
         UpdateVisual();
 
         if (remainingResources <= 0)
@@ -377,23 +374,13 @@ public class ResourceBlock : MonoBehaviour
             Vector3 spawnOffset = (Vector3)(Random.insideUnitCircle * 0.3f);
             DroppedItem.Spawn(data.dropItem, amount, transform.position + spawnOffset, playerTransform, homing: true);
             NetOps.Mine(this, amount);
+            if (NetSession.IsHost) NetHost.Current?.NoteHit(NetWorld.RockKey(this));
 
             GamepadRumble.Play(remainingResources <= 0 ? Haptic.MineBreak : Haptic.MineHit);
-
-            Vector3 hit = transform.position + Vector3.up * 0.25f * transform.localScale.y;
-            if (remainingResources <= 0)
-            {
-                LabFx.Burst(hit, data.chipColor, 14, 3.2f, 0.55f);
-                LabFx.Dust(transform.position + Vector3.down * 0.5f, 1.2f);
-            }
-            else LabFx.Burst(hit, data.chipColor, 5, 2.2f, 0.32f);
         }
-        Sfx.PlayAt(remainingResources <= 0 ? SfxId.BlockBreak : SfxId.MineHit, transform.position);
+        PlayHitFx(remainingResources <= 0);
 
         OnAnyResourceMined?.Invoke(data.dropItem, amount);
-
-        if (shakeCoroutine != null) StopCoroutine(shakeCoroutine);
-        shakeCoroutine = StartCoroutine(Shake());
 
         UpdateVisual();
 
@@ -401,6 +388,23 @@ public class ResourceBlock : MonoBehaviour
         {
             Destroy(gameObject);
         }
+    }
+
+    // 다른 참가자가 캘 때도 재생
+    public void PlayHitFx(bool broke)
+    {
+        if (data == null) return;
+        Vector3 hit = transform.position + Vector3.up * 0.25f * transform.localScale.y;
+        if (broke)
+        {
+            LabFx.Burst(hit, data.chipColor, 14, 3.2f, 0.55f);
+            LabFx.Dust(transform.position + Vector3.down * 0.5f, 1.2f);
+        }
+        else LabFx.Burst(hit, data.chipColor, 5, 2.2f, 0.32f);
+        Sfx.PlayAt(broke ? SfxId.BlockBreak : SfxId.MineHit, transform.position);
+
+        if (shakeCoroutine != null) StopCoroutine(shakeCoroutine);
+        shakeCoroutine = StartCoroutine(Shake());
     }
 
     private void UpdateVisual()

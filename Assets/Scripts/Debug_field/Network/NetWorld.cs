@@ -105,6 +105,9 @@ public static class NetWorld
         g.codexGolden     = Codex.GoldenList();
         g.codexDishes     = Codex.DishList();
         g.codexMilestones = Codex.MilestonesPaid;
+        g.festivalEnd     = TownLife.SyncEnd;
+        g.festivalDay     = TownLife.SyncDay;
+        g.extraSeats      = TownLife.ExtraSeats;
         return g;
     }
 
@@ -315,6 +318,7 @@ public static class NetWorld
         WeatherManager.Instance?.SyncFromHost(g.weather, g.weatherNext, g.weatherNext2);
         if (includePredicted) ShuttleService.Instance?.SyncFromHost(g.shuttles, g.population, g.shuttleTrips, g.residents);
         Codex.SyncFromHost(g.codexGolden, g.codexDishes, g.codexMilestones);
+        TownLife.Instance?.SyncFromHost(g.festivalEnd, g.festivalDay, g.extraSeats);
     }
 
     private static bool SameTech(List<TechNodeSave> a, List<TechNodeSave> b)

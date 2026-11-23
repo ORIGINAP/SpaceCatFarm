@@ -61,6 +61,9 @@ public static class TouchInput
 
     public static bool OverUI { get; private set; }
 
+    // 이번 프레임에 새로 닿은 손가락 (패드 → 터치 전환)
+    public static bool TouchedThisFrame { get; private set; }
+
     public static bool Held(int b) => held && button == b;
     public static bool Down(int b) => held && button == b && !(prevHeld && prevButton == b);
     public static bool Up(int b)   => prevHeld && prevButton == b && !(held && button == b);
@@ -88,11 +91,13 @@ public static class TouchInput
         UsingTouch = false;
         Position = new Vector2(-100f, -100f);
         OverUI = false;
+        TouchedThisFrame = false;
     }
 
     public static void Tick()
     {
         PinchRatio = 1f;
+        TouchedThisFrame = false;
         prevHeld   = held;
         prevButton = button;
         if (releaseNext) { held = false; releaseNext = false; }
@@ -131,12 +136,23 @@ public static class TouchInput
         bool ui = HitsUI(pos);
         var f = new Finger { id = id, pos = pos, downTime = Time.unscaledTime, startUI = ui, overUI = ui };
         fingers.Add(f);
+        TouchedThisFrame = true;
 
         if (!ui && stick == null && StickEnabled && pos.x < Screen.width * StickZoneWidth && pos.y < Screen.height * StickZoneHeight)
         {
             f.role      = Role.Stick;
             stick       = f;
             StickOrigin = StickKnob = pos;
+            return f;
+        }
+
+        // 패드를 쓰다 월드를 처음 누르면 터치 화면으로 바꾸기만 함
+        if (Pad.Active && !ui && pointer == null)
+        {
+            f.role     = Role.Ignored;
+            UsingTouch = true;
+            Position   = pos;
+            OverUI     = false;
             return f;
         }
 

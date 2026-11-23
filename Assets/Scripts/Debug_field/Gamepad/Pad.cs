@@ -4,6 +4,38 @@ using UnityEngine.InputSystem.Controls;
 
 public enum PadButton { A, B, X, Y, LB, RB, LT, RT, Start, Back, L3, R3, Up, Down, Left, Right }
 
+// 짧게 누름 · 꾹 누름 구분
+public sealed class PadTapHold
+{
+    public const float HoldSeconds = 0.45f;
+
+    private readonly PadButton button;
+    private float since = -1f;
+
+    public bool Tapped { get; private set; }
+    public bool Long   { get; private set; }
+
+    public PadTapHold(PadButton button) => this.button = button;
+
+    public void Tick(bool allowed)
+    {
+        Tapped = Long = false;
+        if (!allowed) { since = -1f; return; }
+        if (Pad.Down(button)) since = Time.unscaledTime;
+        if (since < 0f) return;
+        if (!Pad.Held(button))
+        {
+            Tapped = Pad.Up(button);
+            since  = -1f;
+        }
+        else if (Time.unscaledTime - since >= HoldSeconds)
+        {
+            Long  = true;
+            since = -1f;
+        }
+    }
+}
+
 // 레거시 조이스틱 대신 Gamepad.current
 public static class Pad
 {

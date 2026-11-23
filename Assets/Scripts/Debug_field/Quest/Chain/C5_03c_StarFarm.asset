@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a888e0bced5bddb42928b3c84198ab7f, type: 3}
+  m_Name: C5_03c_StarFarm
+  m_EditorClassIdentifier: Assembly-CSharp::QuestDefinition
+  questName: "\uBCC4\uBE5B \uC804\uCD08 \uB18D\uC7A5"
+  description: "\uC804\uCD08\uAE30\uC9C0 = \uBCF8\uC9C4\uC5D0\uC11C \uBA3C \uCC3D\uACE0
+    + \uC218\uD655\uAE30(\uCC44\uAD74\uAE30) + \uBCF8\uC9C4 \uCC3D\uACE0\uAE4C\uC9C0
+    \uC774\uC5B4\uC9C4 \uB808\uC77C. \uB9DE\uB294 \uD1A0\uC591\uC758 \uB18D\uC7A5\uC740
+    \uBCF8\uC9C4\uBCF4\uB2E4 \uBA87 \uBC30\uB098 \uB9CE\uC774 \uAC70\uB46C\uC694."
+  talk: "\uC218\uBC15\uC744 \uAC70\uB450\uB7EC \uB9E4\uBC88 \uC624\uAE34 \uD798\uB4E4\uC8E0?
+    \uC5EC\uAE30\uC5D0\uB3C4 \uC218\uD655\uAE30 \xB7 \uD30C\uC885\uAE30 \xB7 \uCC3D\uACE0\uB97C
+    \uC138\uC6B0\uACE0 \uB808\uC77C\uB85C \uBCF8\uC9C4\uAE4C\uC9C0 \uC774\uC73C\uBA74,
+    \uC218\uBC15\uC774 \uC800\uC808\uB85C \uC9D1\uC5D0 \uC640\uC694!"
+  hint: "\uBCC4\uBE5B \uD1A0\uC591\uC5D0 \uCC3D\uACE0 \xB7 \uC218\uD655\uAE30 \xB7
+    \uD30C\uC885\uAE30\uB97C \uC138\uC6B0\uACE0 \uB808\uC77C\uC744 \uC774\uC5B4\uC694"
+  padHint: "\uBCC4\uBE5B \uD1A0\uC591\uC5D0 \uCC3D\uACE0 \xB7 \uC218\uD655\uAE30
+    \xB7 \uD30C\uC885\uAE30\uB97C \uC138\uC6B0\uACE0 \uB808\uC77C\uC744 \uC774\uC5B4\uC694"
+  tutorialTip: "\uC528\uC557\uC740 \uB808\uC77C\uC5D0 \uC2E4\uB9AC\uC9C0 \uC54A\uC544\uC694.
+    \uC218\uD655\uAE30\uAC00 \uAC70\uB454 \uC528\uC557\uC740 \uD30C\uC885\uAE30\uB85C
+    \uB3CC\uC544\uAC00\uC11C \uB18D\uC7A5\uC774 \uD63C\uC790 \uB3CC\uC544\uAC00\uC694."
+  objectives:
+  - type: 20
+    targetItem: {fileID: 11400000, guid: 5d7c08689d6bee6439c54e0b0f03f2bb, type: 2}
+    targetTechNodeId: 
+    targetAmount: 2
+  - type: 21
+    targetItem: {fileID: 11400000, guid: c3c1d4ab57abb3f4ab5d605a1f1109ce, type: 2}
+    targetTechNodeId: 
+    targetAmount: 30
+  rewards: []
+  rewardCoins: 4000

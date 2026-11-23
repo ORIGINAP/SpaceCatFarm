@@ -12,5 +12,5 @@ public static class NetSession
     public static bool IsReplica => Mode == Role.Client;
 
     // 메시지 형식 바꾸면 올릴 것
-    public const int Protocol = 9;
+    public const int Protocol = 11;
 }

@@ -31,6 +31,16 @@ public class QuestManager : MonoBehaviour
     public int StepsInChapter => CurrentChapter?.quests.FindAll(q => q != null).Count ?? 0;
     public int ChapterCount => chain != null ? chain.chapters.Count : 0;
 
+    // 비축 중인 물건 (셔틀이 창고에서 안 가져감)
+    public static bool Reserved(FarmingItemData item)
+    {
+        var qm = Instance;
+        if (qm == null || item == null) return false;
+        foreach (var o in qm.activeObjectives)
+            if (o.type == QuestObjectiveType.Stockpile && o.targetItem == item) return true;
+        return false;
+    }
+
     public int ResolveSavedIndex(string questId, int savedIndex)
     {
         string name = !string.IsNullOrEmpty(questId) ? questId : $"Quest{savedIndex + 1}";
@@ -97,6 +107,11 @@ public class QuestManager : MonoBehaviour
         CenterCore.OnAnyLevelUp       += HandleCoreLevelUp;
         ShuttleService.OnAnyArrival   += HandleShuttleArrived;
         AutoHarvester.OnAnyMachineHarvest += HandleMachineHarvest;
+        ShuttleService.OnAutoDepart   += HandleAutoDepart;
+        TownLife.OnFestivalHeld       += HandleFestival;
+        TileItem.OnAnyLinkChanged     += PollStatesNow;
+        CatKitchen.OnAnyAutoDish      += HandleAutoDish;
+        CargoRails.OnDelivered        += HandleDelivered;
 
         // 멀티: 호스트만 진행
         if (NetSession.IsReplica) return;
@@ -135,6 +150,11 @@ public class QuestManager : MonoBehaviour
         CenterCore.OnAnyLevelUp       -= HandleCoreLevelUp;
         ShuttleService.OnAnyArrival   -= HandleShuttleArrived;
         AutoHarvester.OnAnyMachineHarvest -= HandleMachineHarvest;
+        ShuttleService.OnAutoDepart   -= HandleAutoDepart;
+        TownLife.OnFestivalHeld       -= HandleFestival;
+        TileItem.OnAnyLinkChanged     -= PollStatesNow;
+        CatKitchen.OnAnyAutoDish      -= HandleAutoDish;
+        CargoRails.OnDelivered        -= HandleDelivered;
 
         Services.Unregister(this);
     }
@@ -302,7 +322,10 @@ public class QuestManager : MonoBehaviour
 
     private static int AlreadyDone(QuestObjective obj)
     {
-        if (obj == null || obj.targetItem == null) return 0;
+        if (obj == null) return 0;
+        int state = StateValue(obj);
+        if (state >= 0) return Mathf.Min(state, obj.targetAmount);
+        if (obj.targetItem == null) return 0;
         int have = Inventory.Instance != null ? Inventory.Instance.GetCount(obj.targetItem) : 0;
         int n = obj.type switch
         {
@@ -312,6 +335,46 @@ public class QuestManager : MonoBehaviour
             _                              => 0,
         };
         return Mathf.Min(n, obj.targetAmount);
+    }
+
+    // 지금 상태로 판단하는 목표, 아니면 -1
+    private static int StateValue(QuestObjective obj) => obj.type switch
+    {
+        QuestObjectiveType.LinkStorage  => MachineFarm.LinkedCount(obj.targetItem),
+        QuestObjectiveType.MachineCrops => MachineFarm.CropKinds,
+        QuestObjectiveType.Stockpile    => MachineFarm.Stock(obj.targetItem),
+        QuestObjectiveType.FindSoil     => Soil.IsFound(Soil.Of(obj.targetItem)) ? 1 : 0,
+        QuestObjectiveType.SoilCrop     => Soil.CountSuited(obj.targetItem != null ? obj.targetItem.seedData : null),
+        QuestObjectiveType.Outposts     => CargoRails.OutpostCount,
+        QuestObjectiveType.Purifiers    => Purify.Purifiers.Count,
+        QuestObjectiveType.Biomes       => Exploration.BiomeCount,
+        QuestObjectiveType.Landmarks    => Exploration.OpenedCount,
+        QuestObjectiveType.Charm        => TownLife.Charm,
+        QuestObjectiveType.Festival     => TownLife.EverHeld ? 1 : 0,
+        _                               => -1,
+    };
+
+    private float nextStatePoll;
+
+    private void PollStatesNow() => nextStatePoll = 0f;
+
+    private void Update()
+    {
+        if (NetSession.IsReplica || currentDef == null || Time.unscaledTime < nextStatePoll) return;
+        nextStatePoll = Time.unscaledTime + 1f;
+
+        bool changed = false;
+        foreach (var obj in activeObjectives)
+        {
+            if (obj.IsComplete) continue;
+            int state = StateValue(obj);
+            if (state < 0) continue;
+            state = Mathf.Min(state, obj.targetAmount);
+            if (state == obj.currentAmount) continue;
+            obj.currentAmount = state;
+            changed = true;
+        }
+        if (changed) NotifyAndCheck();
     }
 
     private static int CountPlaced(FarmingItemData item)
@@ -478,6 +541,43 @@ public class QuestManager : MonoBehaviour
         {
             if (obj.IsComplete || obj.type != QuestObjectiveType.AutoHarvest) continue;
             obj.currentAmount = Mathf.Min(obj.currentAmount + 1, obj.targetAmount);
+            changed = true;
+        }
+
+        if (changed) NotifyAndCheck();
+    }
+
+    private void HandleAutoDepart() => AddAutomation(QuestObjectiveType.AutoDepart, 1);
+
+    private void HandleFestival() => PollStatesNow();
+
+    private void HandleAutoDish(int amount) => AddAutomation(QuestObjectiveType.AutoDish, amount);
+
+    private void HandleDelivered(FarmingItemData item, int amount)
+    {
+        if (NetSession.IsReplica || currentDef == null) return;
+
+        bool changed = false;
+        foreach (var obj in activeObjectives)
+        {
+            if (obj.IsComplete || obj.type != QuestObjectiveType.RailDelivery) continue;
+            if (obj.targetItem != null && obj.targetItem != item) continue;
+            obj.currentAmount = Mathf.Min(obj.currentAmount + amount, obj.targetAmount);
+            changed = true;
+        }
+
+        if (changed) NotifyAndCheck();
+    }
+
+    private void AddAutomation(QuestObjectiveType type, int amount)
+    {
+        if (NetSession.IsReplica || currentDef == null) return;
+
+        bool changed = false;
+        foreach (var obj in activeObjectives)
+        {
+            if (obj.IsComplete || obj.type != type) continue;
+            obj.currentAmount = Mathf.Min(obj.currentAmount + amount, obj.targetAmount);
             changed = true;
         }
 

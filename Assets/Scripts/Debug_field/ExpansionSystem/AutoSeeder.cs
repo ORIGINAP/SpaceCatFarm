@@ -24,8 +24,10 @@ public class AutoSeeder : TileItem, ICoverageArea, IItemBox
     public int        CoverageRadiusCells => SearchRadiusInCells();
     public Color      CoverageColor       => coverageColor;
 
+    private int RangeSide => (DropItemData != null ? DropItemData.tileWidth : 1) + CoverageRadiusCells * 2;
+
     public override string AbilityText =>
-        $"{Interval:0.#}초마다 빈 밭 {targetsPerCycle}칸에 씨앗을 심어요 (범위 {CoverageRadiusCells}칸)\n씨앗통 {seedCapacity}개 · 비면 이어 준 창고에서 꺼내 써요";
+        $"{Interval:0.#}초마다 빈 밭 {targetsPerCycle}칸에 씨앗을 심어요 (초당 {targetsPerCycle / Interval:0.#}칸 · 범위 {RangeSide}×{RangeSide}칸)\n씨앗통 {seedCapacity}개 · 비면 이어 준 창고에서 꺼내 써요";
 
     private float Interval => plantInterval / TechTreeManager.MachineSpeed;
     public override float WorkRate => plantInterval > 0f ? targetsPerCycle / plantInterval : 0f;
@@ -118,7 +120,8 @@ public class AutoSeeder : TileItem, ICoverageArea, IItemBox
     {
         while (true)
         {
-            float interval = Interval;
+            // 범위가 겹친 파종기끼리 번갈아 심게 주기를 살짝 흔듦
+            float interval = Interval * Random.Range(0.8f, 1.2f);
             nextPlantAt = Time.time + interval;
             yield return new WaitForSeconds(interval);
 
@@ -162,9 +165,13 @@ public class AutoSeeder : TileItem, ICoverageArea, IItemBox
         storage = null;
         if (seedOrder.Count > 0) return seedOrder[0];
 
+        // 자기 작물 씨앗이 돌아올 때까지 기다림
         if (lastSeedItem != null)
+        {
             for (int i = 0; i < Links.Count; i++)
                 if (Links[i] is ItemStorage s && s.GetCount(lastSeedItem) > 0) { storage = s; return lastSeedItem; }
+            return null;
+        }
 
         for (int i = 0; i < Links.Count; i++)
             if (Links[i] is ItemStorage st)
@@ -182,14 +189,36 @@ public class AutoSeeder : TileItem, ICoverageArea, IItemBox
         return Mathf.Max(1, Mathf.CeilToInt(searchRadius / cellSize));
     }
 
+    // 수확기가 닿는 밭이 있으면 그 밭에만 심음 (씨앗이 창고로 돌아오게)
     private PlantTile FindEmptyPlantTile()
     {
+        MachineFarm.RefreshHarvesters();
+        PlantTile outside = null;
+        bool anyCovered = false;
         foreach (var tile in nearbyPlants.Get(this, SearchRadiusInCells()))
         {
-            if (tile is PlantTile plant && plant.CurrentState == PlantTile.PlantState.Empty)
-                return plant;
+            if (tile is not PlantTile plant) continue;
+            bool covered = MachineFarm.CoveredByHarvester(plant);
+            anyCovered |= covered;
+            if (plant.CurrentState != PlantTile.PlantState.Empty) continue;
+            if (covered) return plant;
+            if (outside == null) outside = plant;
         }
-        return null;
+        return anyCovered ? null : outside;
+    }
+
+    // 씨앗이 다 떨어졌고 곁에 자라는 것도 없음
+    public bool IsStarved
+    {
+        get
+        {
+            if (lastSeedItem == null || storedSeeds > 0) return false;
+            for (int i = 0; i < Links.Count; i++)
+                if (Links[i] is ItemStorage s && s.GetCount(lastSeedItem) > 0) return false;
+            foreach (var tile in nearbyPlants.Get(this, SearchRadiusInCells()))
+                if (tile is PlantTile plant && plant.CurrentSeed == lastSeedItem.seedData) return false;
+            return true;
+        }
     }
 
 #if UNITY_EDITOR

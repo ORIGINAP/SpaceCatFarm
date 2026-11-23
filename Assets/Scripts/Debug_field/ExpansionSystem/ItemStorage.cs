@@ -62,6 +62,8 @@ public class ItemStorage : TileItem, IItemBox
 
     public IReadOnlyCollection<FarmingItemData> StockedItems => stock.Keys;
 
+    public bool SeedsOnly => acceptedTypes != null && acceptedTypes.Length == 1 && acceptedTypes[0] == FarmingItemType.Seed;
+
     public bool Accepts(FarmingItemData item)
     {
         if (item == null) return false;

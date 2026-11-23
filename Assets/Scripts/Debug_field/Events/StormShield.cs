@@ -26,6 +26,8 @@ public class StormShield : TileItem
     [SerializeField] [Range(0.01f, 0.3f)] private float outlineWidth = 0.04f;
     [SerializeField] [Range(8, 128)] private int outlineSegments = 64;
 
+    private LineRenderer rangeRing;
+
     private void OnEnable()  => _all.Add(this);
     private void OnDisable() => _all.Remove(this);
 
@@ -36,10 +38,16 @@ public class StormShield : TileItem
     }
 
     private void BuildRangeOutline()
-        => WorldCircleOutline.Create(transform, shieldRadius, outlineColor, outlineWidth, outlineSegments);
+        => rangeRing = WorldCircleOutline.Create(transform, shieldRadius, outlineColor, outlineWidth, outlineSegments);
+
+    // 범위 원은 가리키거나 방어막을 들었을 때만
+    private void LateUpdate()
+    {
+        if (rangeRing != null) rangeRing.enabled = WorldHover.ShowRange(this);
+    }
 
     public bool Protects(Vector3 worldPos) =>
-        isActive && !IsGhost && Vector2.Distance(transform.position, worldPos) <= shieldRadius;
+        isActive && !IsGhost && Mathf.Max(Mathf.Abs(transform.position.x - worldPos.x), Mathf.Abs(transform.position.y - worldPos.y)) <= shieldRadius;
 
     public void SetActive(bool active) => isActive = active;
 

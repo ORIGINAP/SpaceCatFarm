@@ -41,9 +41,17 @@ public class QuestGuide : MonoBehaviour
     private const float ResolveInterval = 0.25f;
     private const int   MaxDepth        = 9;
 
+    // 새 목표 직후에만 눈에 띄게, 그 뒤엔 잔잔히
+    private const float LoudSeconds = 3.5f;
+    private const float CalmFade    = 0.8f;
+
     private Target current;
     private string lastActionKey;
+    private string lastTargetKey;
+    private float  loudSince = float.NegativeInfinity;
     private float  nextResolve;
+
+    private float Loud => 1f - Mathf.Clamp01((Time.unscaledTime - loudSince - LoudSeconds) / CalmFade);
 
     public static void Create()
     {
@@ -77,12 +85,21 @@ public class QuestGuide : MonoBehaviour
                 lastActionKey = key;
                 OnChanged?.Invoke();
             }
+            // 숫자가 바뀌는 라벨은 빼고 비교
+            string targetKey = current.edgeLabel + "|" + current.uiLabel + "|" + (current.ui != null ? current.ui.GetInstanceID() : 0);
+            if (targetKey != lastTargetKey)
+            {
+                lastTargetKey = targetKey;
+                loudSince = Time.unscaledTime;
+            }
         }
     }
 
     private void LateUpdate()
     {
-        bool hide = PlayerTileController.Instance == null || PlayerTileController.IsPauseMenuOpen() || TutorialUI.IsShowing || JourneyUI.IsOpen;
+        // 전시 데모는 정해진 순서로 보여 주니 안내 표시를 끔
+        bool hide = PlayerTileController.Instance == null || PlayerTileController.IsPauseMenuOpen() || TutorialUI.IsShowing || JourneyUI.IsOpen
+                    || GameLaunchContext.DemoMode;
         UpdateWorldMarker(!hide && current.hasWorld);
         UpdateWorldBubble(!hide && current.hasWorld && !PlayerTileController.IsAnyUIOpen());
         UpdateEdgeArrow(!hide && current.hasWorld && !PlayerTileController.IsAnyUIOpen());
@@ -107,14 +124,34 @@ public class QuestGuide : MonoBehaviour
         var qm = QuestManager.Instance;
         if (qm == null || qm.CurrentQuest == null || qm.ActiveObjectives == null) return t;
 
+        QuestObjective first = null;
         foreach (var obj in qm.ActiveObjectives)
         {
             if (obj.IsComplete) continue;
-            ResolveObjective(obj, ref t);
+            if (first == null)
+            {
+                first = obj;
+                ResolveObjective(obj, ref t);
+                if (!IsWaiting(t)) break;
+                continue;
+            }
+            // 앞 목표를 기다리는 동안 같은 종류의 다음 목표를 미리 챙기게
+            if (obj.type != first.type) continue;
+            var next = new Target();
+            ResolveObjective(obj, ref next);
+            if (string.IsNullOrEmpty(next.action) || IsWaiting(next)) continue;
+            if (first.targetItem != null) next.action = $"{Eun(first.targetItem.itemName)} {WaitWord(t.action)} — 그동안 {next.action}";
+            t = next;
             break;
         }
         return t;
     }
+
+    private static bool IsWaiting(Target t)
+        => t.action != null && (t.action.Contains("중이에요") || t.action.Contains("그동안 다른 일"));
+
+    private static string WaitWord(string action)
+        => action.Contains("요리") ? "요리 중" : action.Contains("자라") ? "자라는 중" : action.Contains("녹이") ? "녹이는 중" : "기다리는 중";
 
     private void ResolveObjective(QuestObjective obj, ref Target t)
     {
@@ -133,7 +170,79 @@ public class QuestGuide : MonoBehaviour
             case QuestObjectiveType.CropVarieties: ResolveVarieties(ref t, 0); break;
             case QuestObjectiveType.CoreLevel:     ResolveCore(ref t, 0); break;
             case QuestObjectiveType.AutoHarvest:   ResolveAutoHarvest(ref t, 0); break;
+            case QuestObjectiveType.LinkStorage:   ResolveLink(obj.targetItem, ref t, 0); break;
+            case QuestObjectiveType.AutoDepart:    ResolveAutoDepart(ref t, 0); break;
+            case QuestObjectiveType.MachineCrops:  ResolveMachineCrops(obj.targetAmount, ref t, 0); break;
+            case QuestObjectiveType.AutoDish:      ResolveAutoDish(ref t, 0); break;
+            case QuestObjectiveType.Stockpile:     ResolveStockpile(obj, ref t, 0); break;
+            case QuestObjectiveType.FindSoil:      ResolveFindSoil(obj.targetItem, ref t); break;
+            case QuestObjectiveType.SoilCrop:      ResolveSoilCrop(obj.targetItem, ref t, 0); break;
+            case QuestObjectiveType.Outposts:      ResolveOutposts(obj.targetItem, ref t, 0); break;
+            case QuestObjectiveType.RailDelivery:  ResolveDelivery(obj.targetItem, ref t, 0); break;
+            case QuestObjectiveType.Purifiers:     ResolvePurifiers(ref t, 0); break;
+            case QuestObjectiveType.Biomes:        ResolveBiomes(ref t); break;
+            case QuestObjectiveType.Landmarks:     ResolveLandmarks(ref t); break;
+            case QuestObjectiveType.Charm:         ResolveCharm(obj, ref t, 0); break;
+            case QuestObjectiveType.Festival:      ResolveFestival(ref t, 0); break;
         }
+    }
+
+    // 꾸미기 가게에서 장식을 사서 놓기
+    private void ResolveCharm(QuestObjective obj, ref Target t, int depth)
+    {
+        string why = $"마을 매력 ★{TownLife.Charm}/{obj.targetAmount} — 예쁜 마을은 셔틀 짐값을 더 받아요";
+        var inv = Inventory.Instance;
+        if (inv != null)
+            for (int i = 0; i < inv.SlotCount; i++)
+            {
+                var s = inv.GetSlot(i);
+                if (s == null || s.IsEmpty || s.Item.charm <= 0) continue;
+                ResolvePlace(s.Item, ref t, depth + 1);
+                Why(ref t, why);
+                return;
+            }
+
+        var shop = ShopManager.Instance;
+        FarmingItemData pick = null;
+        if (shop != null)
+            foreach (var it in shop.CurrentStock)
+                if (it != null && it.charm > 0 && shop.IsPurchasable(it) && (pick == null || shop.BuyPrice(it) < shop.BuyPrice(pick))) pick = it;
+        if (pick == null) { t.action = $"꾸미기 가게는 문명 Lv.{ShopManager.DecorLevel}에 열려요"; return; }
+        if (CurrencyManager.Instance != null && !CurrencyManager.Instance.CanAfford(shop.BuyPrice(pick)))
+        {
+            ResolveShuttle(ref t, depth + 1);
+            Why(ref t, $"{pick.itemName} 살 코인 모으기 ({CurrencyManager.Format(shop.BuyPrice(pick))}코인)");
+            return;
+        }
+        Shop(ref t, $"[상점](B) → 꾸미기 탭에서 {Eul(pick.itemName)} 사요", pick);
+        Why(ref t, why);
+    }
+
+    // 셔틀 창에서 축제 열기
+    private void ResolveFestival(ref Target t, int depth)
+    {
+        string block = TownLife.FestivalBlock();
+        if (block == null)
+        {
+            var rect = ShuttleUI.IsOpen ? ShuttleUI.Instance.FestivalButtonRect : null;
+            if (rect != null)
+            {
+                t.ui      = rect;
+                t.uiLabel = "축제!";
+                t.action  = $"[마을 축제 열기]를 {(Pad.Active ? "A로 " : "")}눌러요 ({CurrencyManager.Format(TownLife.FestivalCost)}코인)";
+                return;
+            }
+            t.ui            = HudDock.ButtonRect(HudDock.Slot.Shuttle);
+            t.uiLabel       = "열기!";
+            t.action        = $"{(Pad.Active ? "X " : "")}셔틀 창에서 [마을 축제 열기]";
+            t.shortcutLabel = "셔틀 창 열기";
+            t.shortcut      = () => ShuttleUI.Instance?.Open();
+            return;
+        }
+        if (TownLife.FestivalActive) { t.action = "마을 축제 중이에요! " + TownLife.EffectText; return; }
+        if (!TownLife.Unlocked || TownLife.HeldToday) { t.action = block; return; }
+        ResolveShuttle(ref t, depth + 1);
+        Why(ref t, $"축제 비용 {CurrencyManager.Format(TownLife.FestivalCost)}코인 모으기");
     }
 
     private static readonly List<TileItem> harvesterBuffer = new();
@@ -175,7 +284,24 @@ public class QuestGuide : MonoBehaviour
         if (bestPlots == 0)
         {
             World(ref t, best, "곁에 밭!", "자동수확기");
-            t.action = $"자동수확기 둘레 {best.CoverageRadiusCells}칸 안에 밭이 없어요 — 수확기 곁에 플랜트를 깔아요 (수확기에 마우스를 올리면 범위가 보여요)";
+            t.action = $"자동수확기 둘레 {best.CoverageRadiusCells}칸 안에 밭이 없어요 — 수확기 곁에 플랜트를 깔아요" + (Pad.Active ? "" : " (수확기에 마우스를 올리면 범위가 보여요)");
+            return;
+        }
+        var idleSeeder = NearestTile<AutoSeeder>(TileType.AutoSeeder, s => MachineFarm.SeedOf(s) == null || s.IsStarved);
+        if (bestGrowing == 0 && idleSeeder != null)
+        {
+            var seedItem = FirstSeedInInventory();
+            if (seedItem == null)
+            {
+                ResolvePlant(null, ref t, depth + 1);
+                Why(ref t, "파종기에 넣을 씨앗");
+                return;
+            }
+            bool selectFirst = SelectHint(seedItem, ref t);
+            World(ref t, idleSeeder, "씨앗 넣기", "자동파종기");
+            if (selectFirst) return;
+            t.action = Pad.Active ? $"{Eul(seedItem.itemName)} 든 채 파종기 앞에서 A — 곁의 빈 밭에 알아서 심어요"
+                                  : $"{Eul(seedItem.itemName)} 든 채 파종기 클릭 — 곁의 빈 밭에 알아서 심어요";
             return;
         }
         if (bestGrowing == 0 && empty != null)
@@ -195,8 +321,607 @@ public class QuestGuide : MonoBehaviour
                                   : "수확기 곁 빈 밭에 씨앗을 심어요 — 다 자라면 수확기가 알아서 거둬요";
             return;
         }
+        if (best.StorageFull && MachineFarm.FullestStorage(best) is ItemStorage full)
+        {
+            World(ref t, full, "가득!", "창고");
+            t.action = "창고 자리가 모자라 수확기가 쉬고 있어요 — 창고를 비우거나 곁에 창고를 더 지어 이어요";
+            return;
+        }
         World(ref t, best, "수확 중", "자동수확기");
-        t.action = "자동수확기가 다 자란 작물을 알아서 거둬요 — 그동안 다른 일을 해도 돼요 (수확물은 이어 준 창고 · 가방으로)";
+        t.action = "자동수확기가 다 자란 작물을 알아서 거둬요 — 그동안 다른 일을 해도 돼요 (수확물은 이어 준 창고로, 없으면 가방으로)";
+    }
+
+    private static void WorldCell(ref Target t, Vector2Int cell, string label, string edge)
+    {
+        var gm = GridManager.Instance;
+        if (gm == null) return;
+        t.hasWorld   = true;
+        t.world      = gm.GridToWorld(cell) + Vector3.up * gm.CellSize * 0.45f;
+        t.worldLabel = label;
+        t.edgeLabel  = edge;
+    }
+
+    // 정해진 자리에 설치: 제작 · 고르기 안내 뒤 자리 표시
+    private void PlaceAt(FarmingItemData item, Vector2Int cell, string label, string edge, string how, ref Target t, int depth)
+    {
+        ResolvePlace(item, ref t, depth + 1);
+        if (Count(item) <= 0) { Why(ref t, how); return; }
+        WorldCell(ref t, cell, label, edge);
+        var ptc = PlayerTileController.Instance;
+        if (ptc != null && ptc.SelectedItem == item) t.action = how;
+    }
+
+    // 정화 경계 바로 밖, 가장 가까운 광맥 · 토양 쪽에 정화탑
+    private void ResolvePurifiers(ref Target t, int depth)
+    {
+        var gm = GridManager.Instance;
+        var core = CenterCore.Current;
+        if (gm == null || core == null) return;
+        Vector2 c = PowerRange.Center(core.FootprintMin, core.FootprintMax);
+        Vector2 dir = Vector2.right;
+        float best = float.MaxValue;
+        if (TerrainMap.Current != null)
+            foreach (var p in TerrainMap.Current.SoilPatches)
+            {
+                float d = ((Vector2)p.center - c).sqrMagnitude;
+                if (d < best) { best = d; dir = ((Vector2)p.center - c).normalized; }
+            }
+        int edge = Purify.CoreRadius(core.Level) + 2;
+        float reach = Mathf.Max(Mathf.Abs(dir.x), Mathf.Abs(dir.y));
+        var cell = Vector2Int.RoundToInt(c + dir * ((edge + 3) / Mathf.Max(0.3f, reach)));
+        PlaceAt(NetWorld.Item("Item_Purifier"), OutpostPlan.OpenCell(cell, 2, 2), "정화탑!", "정화 경계",
+                "보랏빛 오염 안개 경계 바로 밖에 정화탑을 세워 땅을 넓혀요", ref t, depth);
+    }
+
+    private void ResolveBiomes(ref Target t)
+    {
+        var map = TerrainMap.Current;
+        var gm = GridManager.Instance;
+        if (map == null || gm == null) return;
+        for (int i = 0; i < WorldThemeConfig.Count; i++)
+        {
+            var b = (WorldTheme)i;
+            if (Exploration.HasFound(b)) continue;
+            var core = CenterCore.Current;
+            Vector2 from = core != null ? (Vector2)core.GridPosition : Vector2.zero;
+            float half = Mathf.Min(gm.GridWidth, gm.GridHeight) * 0.5f;
+            var cell = Vector2Int.RoundToInt(from + map.BiomeDirection(b) * half * 0.42f);
+            WorldCell(ref t, cell, WorldThemeConfig.DisplayName(b), WorldThemeConfig.DisplayName(b));
+            t.action = $"화살표를 따라 {WorldThemeConfig.DisplayName(b)}까지 걸어가요 — {WorldThemeConfig.Blurb(b)}";
+            return;
+        }
+    }
+
+    private void ResolveLandmarks(ref Target t)
+    {
+        var near = BiomeLandmark.Nearest(Me, true);
+        var gm = GridManager.Instance;
+        if (near == null || gm == null) return;
+        WorldCell(ref t, gm.WorldToGrid(near.transform.position), "유적!", "탐사 유적");
+        t.action = Pad.Active ? "유적 곁에서 A로 조사해요" : "유적 곁에서 클릭해 조사해요 — 탐사 스캐너를 쓰면 근처 유적 방향이 보여요";
+    }
+
+    private void ResolveFindSoil(FarmingItemData seed, ref Target t)
+    {
+        var soil = Soil.Of(seed);
+        var gm = GridManager.Instance;
+        if (soil == SoilType.None || gm == null || !Soil.TryNearest(soil, gm.WorldToGrid(Me), out var patch)) return;
+        WorldCell(ref t, patch.center, "여기!", Soil.Name(soil));
+        t.action = $"화살표를 따라 {Soil.Name(soil)}까지 걸어가요 — 도착하면 미니맵에도 나타나요";
+    }
+
+    private void ResolveSoilCrop(FarmingItemData seed, ref Target t, int depth)
+    {
+        var soil = Soil.Of(seed);
+        var gm = GridManager.Instance;
+        var em = EnergyManager.Instance;
+        if (soil == SoilType.None || gm == null || depth > MaxDepth || !Soil.TryNearest(soil, gm.WorldToGrid(Me), out var patch)) return;
+        string name = Soil.Name(soil);
+
+        if (!Purify.IsPure(patch.center))
+        {
+            PlaceAt(NetWorld.Item("Item_Purifier"), OutpostPlan.OpenCell(patch.center, 2, 2), "정화탑!", name,
+                    $"{name}는 오염돼 있어요 — 한가운데에 정화탑을 세워 밭을 일굴 땅을 만들어요", ref t, depth);
+            return;
+        }
+        if (em != null && !em.HasEnergy(patch.center))
+        {
+            PlaceAt(NetWorld.Item("Item_PowerRelay"), OutpostPlan.NextRelayCell(patch.center), "중계탑!", "중계탑 자리",
+                    $"{name}까지 전기를 이어요 — 중계탑은 {PowerRelay.DefaultSupplyRadius}칸 안에 전기를 보내요", ref t, depth);
+            return;
+        }
+        var empty = NearestPlot(p => p.SoilKind == soil && p.CurrentState == PlantTile.PlantState.Empty && p.IsPowered);
+        if (empty == null)
+        {
+            PlaceAt(NetWorld.Item("PlantTile"), OutpostPlan.OpenCell(patch.center, 1, 1), "밭!", name, $"{name} 위에 플랜트를 깔아요", ref t, depth);
+            return;
+        }
+        if (Count(seed) <= 0)
+        {
+            ResolveObtain(seed, 1, ref t, depth + 1);
+            Why(ref t, $"{name}에 심을 씨앗");
+            return;
+        }
+        bool select = SelectHint(seed, ref t);
+        World(ref t, empty, "심기", name);
+        if (select) return;
+        t.action = Pad.Active ? "빈 밭 앞에서 RT로 심어요" : "빈 밭을 클릭해 심어요";
+    }
+
+    private void ResolveOutposts(FarmingItemData kind, ref Target t, int depth)
+    {
+        if (depth > MaxDepth) return;
+        bool ore = kind != null && kind.tilePrefab != null && kind.tilePrefab.GetComponent<ResourceExtractor>() != null;
+        var plan = OutpostPlan.Next(Soil.Of(kind), ore);
+        string place = plan.soil != SoilType.None ? Soil.Name(plan.soil) : "광맥";
+        switch (plan.step)
+        {
+            case OutpostPlan.Step.HomeStorage:
+                PlaceAt(NetWorld.Item("NormalStorage"), plan.cell, "창고!", "본진 창고", "레일이 물건을 내려놓을 본진 창고를 세워요", ref t, depth);
+                break;
+            case OutpostPlan.Step.Purify:
+                PlaceAt(NetWorld.Item("Item_Purifier"), plan.cell, "정화탑!", place,
+                        $"{place}는 아직 오염된 땅이에요 — 정화탑을 세워 정화해요 (오염된 땅에도 세울 수 있어요)", ref t, depth);
+                break;
+            case OutpostPlan.Step.Power:
+                PlaceAt(NetWorld.Item("Item_PowerRelay"), plan.cell, "중계탑!", "중계탑 자리",
+                        $"{place}까지 전기를 이어요 — 중계탑은 {PowerRelay.DefaultSupplyRadius}칸 안에 전기를 보내요", ref t, depth);
+                break;
+            case OutpostPlan.Step.Storage:
+                PlaceAt(NetWorld.Item("NormalStorage"), plan.cell, "창고!", place, $"{place} 곁에 전초기지 창고를 세워요", ref t, depth);
+                break;
+            case OutpostPlan.Step.Producer:
+                ResolveProducer(plan, ore || place == "광맥", ref t, depth);
+                break;
+            case OutpostPlan.Step.Rail:
+                PlaceAt(NetWorld.Item("Item_CargoRail"), plan.cell, "기둥!", "다음 기둥",
+                        $"기둥을 세워 본진 창고까지 이어요 — {LinkRules.MaxDistanceCells:0}칸 안의 기둥과 저절로 이어져요", ref t, depth);
+                break;
+        }
+    }
+
+    // 현장 창고에 채굴기 · 수확기 잇기
+    private void ResolveProducer(OutpostPlan.Result plan, bool ore, ref Target t, int depth)
+    {
+        var gm = GridManager.Instance;
+        var item = NetWorld.Item(ore ? "T1_ResourceExtractor" : "AutoHarvester");
+        TileItem machine = null;
+        foreach (var tile in gm.GetDynamicTiles())
+            if (MachineFarm.SameMachine(tile, item) && !MachineFarm.LinkedToStorage(tile)
+                && LinkRules.DistanceCells(tile, plan.storage) <= LinkRules.MaxDistanceCells) { machine = tile; break; }
+        if (machine == null)
+        {
+            string name = ore ? "채굴기" : "수확기";
+            ResolvePlace(item, ref t, depth + 1);
+            if (Count(item) <= 0) { Why(ref t, $"전초기지 창고 곁 {name}"); return; }
+            if (ore && plan.storage != null)
+            {
+                var block = NearestBlockTo(plan.storage.transform.position);
+                if (block != null)
+                {
+                    t.hasWorld   = true;
+                    t.world      = block.transform.position + Vector3.up * 0.55f;
+                    t.worldLabel = "곁에 설치";
+                    t.edgeLabel  = "광맥";
+                    return;
+                }
+            }
+            WorldCell(ref t, plan.cell, $"{name}!", "전초기지");
+            return;
+        }
+        if (LinkModeController.IsActive && LinkModeController.Source == machine)
+        {
+            World(ref t, plan.storage, Pad.Active ? "A!" : "클릭!", "창고");
+            t.action = Pad.Active ? "창고를 조준해 A — 노란 선으로 이어져요" : "창고를 클릭하면 노란 선으로 이어져요";
+            return;
+        }
+        World(ref t, machine, "연결", LinkRules.NameOf(machine));
+        t.action = Pad.Active ? $"{LinkRules.NameOf(machine)} 앞에서 A → [연결하기] → 전초기지 창고 조준 후 A"
+                              : $"{LinkRules.NameOf(machine)} 클릭 → 창 아래 [연결하기] → 전초기지 창고 클릭";
+    }
+
+    private static ItemStorage OutpostOn(SoilType soil)
+    {
+        foreach (var net in CargoRails.Networks)
+            foreach (var s in net.Storages)
+                if (CargoRails.IsOutpost(net, s) && (soil == SoilType.None || OutpostPlan.SoilNear(s.GridPosition) == soil)) return s;
+        return null;
+    }
+
+    private static ResourceBlock NearestBlockTo(Vector3 p)
+    {
+        ResourceBlock best = null;
+        float bestD = float.MaxValue;
+        foreach (var b in ResourceBlock.Active)
+        {
+            if (b == null || b.RemainingResources <= 0 || b.Data == null || b.Data.minToolGrade > 1) continue;
+            float d = (b.transform.position - p).sqrMagnitude;
+            if (d < bestD) { bestD = d; best = b; }
+        }
+        return best;
+    }
+
+    private void ResolveDelivery(FarmingItemData crop, ref Target t, int depth)
+    {
+        if (depth > MaxDepth) return;
+        if (CargoRails.OutpostCount <= 0) { ResolveOutposts(null, ref t, depth + 1); return; }
+
+        var seed = crop != null && crop.isCropProduct ? SeedFor(crop) : null;
+        if (seed != null)
+        {
+            var soil = Soil.Of(seed);
+            if (soil != SoilType.None && Soil.CountSuited(seed.seedData) == 0
+                && NearestTile<AutoSeeder>(TileType.AutoSeeder, s => MachineFarm.SeedOf(s) == seed) == null)
+            {
+                ResolveSoilCrop(seed, ref t, depth + 1);
+                return;
+            }
+            var seeder = NearestTile<AutoSeeder>(TileType.AutoSeeder, s => MachineFarm.SeedOf(s) == seed);
+            if (seeder != null)
+            {
+                MachineFarm.CountPlots(seeder, out _, out int covered);
+                if (covered == 0)
+                {
+                    PlaceAt(NetWorld.Item("PlantTile"), OutpostPlan.OpenCell(seeder.GridPosition + Vector2Int.down, 1, 1), "밭!", "파종기 곁",
+                            "파종기 · 수확기 범위 안에 플랜트를 깔아요 — 심고 거두는 건 기계가 해요", ref t, depth);
+                    return;
+                }
+            }
+            if (seeder == null)
+            {
+                var idle = NearestTile<AutoSeeder>(TileType.AutoSeeder, s => MachineFarm.SeedOf(s) == null);
+                if (idle == null)
+                {
+                    var site = OutpostOn(soil);
+                    string spot = soil != SoilType.None ? Soil.Name(soil) : "전초기지";
+                    if (site != null)
+                        PlaceAt(NetWorld.Item("AutoSeeder"), OutpostPlan.OpenCell(site.GridPosition + new Vector2Int(-2, 2), 1, 1), "파종기!", spot,
+                                $"{spot} 창고 곁에 파종기를 세워요 — {ItemCellUI.Ga(crop.itemName)} 저절로 심겨요", ref t, depth);
+                    else
+                    {
+                        ResolvePlace(NetWorld.Item("AutoSeeder"), ref t, depth + 1);
+                        Why(ref t, $"{spot}에서 {crop.itemName} 심어 줄 파종기");
+                    }
+                    return;
+                }
+                if (Count(seed) <= 0) { ResolveObtain(seed, 1, ref t, depth + 1); Why(ref t, "파종기에 넣을 씨앗"); return; }
+                bool select = SelectHint(seed, ref t);
+                World(ref t, idle, "씨앗 넣기", "자동파종기");
+                if (!select) t.action = Pad.Active ? "씨앗을 든 채 파종기 앞에서 A" : "씨앗을 든 채 파종기 클릭";
+                return;
+            }
+        }
+        foreach (var net in CargoRails.Networks)
+            foreach (var s in net.Storages)
+                if (CargoRails.IsOutpost(net, s))
+                {
+                    World(ref t, s, "운송 중", "전초기지");
+                    t.action = "전초기지 창고에 물건이 모이면 레일이 본진으로 실어 와요 — 그동안 다른 일을 해도 돼요";
+                    return;
+                }
+    }
+
+    private void ResolveLink(FarmingItemData item, ref Target t, int depth)
+    {
+        var gm = GridManager.Instance;
+        if (gm == null || item == null || depth > MaxDepth) return;
+
+        TileItem machine = null;
+        foreach (var tile in gm.GetDynamicTiles())
+            if (MachineFarm.SameMachine(tile, item) && !MachineFarm.LinkedToStorage(tile)) { machine = tile; break; }
+        if (machine == null)
+        {
+            ResolvePlace(item, ref t, depth + 1);
+            Why(ref t, "창고와 이을 설비");
+            if (item.tilePrefab != null && item.tilePrefab.GetComponent<ResourceExtractor>() != null && Count(item) > 0)
+                PointAtOre(item, ref t);
+            return;
+        }
+
+        string name = LinkRules.NameOf(machine);
+        var storage = MachineFarm.NearestStorage(machine);
+        if (storage == null)
+        {
+            ResolvePlace(NetWorld.Item("NormalStorage"), ref t, depth + 1);
+            Why(ref t, $"{name} 곁({LinkRules.MaxDistanceCells:0}칸 안)에 둘 창고");
+            return;
+        }
+        if (LinkModeController.IsActive && LinkModeController.Source == machine)
+        {
+            World(ref t, storage, Pad.Active ? "A!" : "클릭!", "창고");
+            t.action = Pad.Active ? "창고를 조준해 A — 노란 선으로 이어져요" : "창고를 클릭하면 노란 선으로 이어져요";
+            return;
+        }
+        World(ref t, machine, "연결", name);
+        if (machine is ShuttlePad)
+        {
+            t.action = Pad.Active ? "X 셔틀 창 → [창고 연결] → 창고 조준 후 A" : "셔틀 창 → [창고 연결] → 창고 클릭";
+            t.shortcutLabel = "셔틀 창 열기";
+            t.shortcut      = () => ShuttleUI.Instance?.Open();
+            return;
+        }
+        t.action = Pad.Active ? $"{name} 앞에서 A → [연결하기] → 창고 조준 후 A"
+                              : $"{name} 클릭 → 창 아래 [연결하기] → 창고 클릭";
+    }
+
+    private void ResolveAutoDepart(ref Target t, int depth)
+    {
+        var svc = ShuttleService.Instance;
+        if (svc == null || depth > MaxDepth) return;
+
+        ShuttleSave waiting = null;
+        TileItem pad = null;
+        foreach (var s in svc.Shuttles)
+        {
+            var p = ShuttleService.PadOf(s);
+            if (s.away || !MachineFarm.LinkedToStorage(p)) continue;
+            waiting = s;
+            pad = p;
+            break;
+        }
+        if (waiting == null)
+        {
+            if (MachineFarm.LinkedCount(ShuttleService.PadItem) <= 0) { ResolveLink(ShuttleService.PadItem, ref t, depth + 1); return; }
+            t.action = "이어 둔 착륙장에 셔틀이 오면 창고 짐을 알아서 실어요 — 잠깐만 기다려요";
+            return;
+        }
+
+        var storage = MachineFarm.LinkedStorage(pad);
+        foreach (var line in waiting.cargo)
+        {
+            if (line.Missing <= 0) continue;
+            var item = NetWorld.Item(line.item);
+            if (item == null) continue;
+            if (Count(item) > 0)
+            {
+                MoveToStorage(item, storage, Pad.Active ? "창고 앞에서 A → 가방 칸에서 A" : "창고 클릭 → 가방 칸 누르기", ref t);
+                return;
+            }
+            ResolveObtain(item, line.Missing, ref t, depth + 1);
+            Why(ref t, $"창고에 {item.itemName} 모으기 ({line.loaded}/{line.amount}){EtaNote(item, line.Missing)}");
+            return;
+        }
+    }
+
+    // 채굴기는 광석 곁에 세우도록 가리킴
+    private static void PointAtOre(FarmingItemData extractor, ref Target t)
+    {
+        var ptc = PlayerTileController.Instance;
+        if (ptc == null || ptc.SelectedItem != extractor) return;
+        var block = NearestBlock(NetWorld.Item("Item_Copper"));
+        if (block == null) return;
+        t.hasWorld   = true;
+        t.world      = block.transform.position + Vector3.up * 0.55f;
+        t.worldLabel = "곁에 설치";
+        t.edgeLabel  = "광석";
+        t.action     = Pad.Active ? "광석 곁에서 RT로 설치 — 둘레의 광석을 알아서 캐요" : "광석 곁을 클릭해 설치 — 둘레의 광석을 알아서 캐요";
+    }
+
+    // 가방 물건을 창고로, 꽉 찼으면 비우라고 안내
+    private static void MoveToStorage(FarmingItemData item, ItemStorage storage, string how, ref Target t)
+    {
+        if (storage.HasSpace)
+        {
+            World(ref t, storage, "옮기기", "창고");
+            t.action = $"가방의 {Eul(item.itemName)} 창고로 옮겨요 — {how}";
+            return;
+        }
+        World(ref t, storage, "가득!", "창고");
+        t.action = $"창고가 가득 차서 {Eul(item.itemName)} 못 넣어요 — 창고 {(Pad.Active ? "앞에서 A" : "클릭")} → 안 쓰는 걸 꺼내거나, 대형 창고를 이어요";
+    }
+
+    private void ResolveMachineCrops(int target, ref Target t, int depth)
+    {
+        if (depth > MaxDepth) return;
+        var harvesterItem = NetWorld.Item("AutoHarvester");
+        if (NearestTile<AutoHarvester>(TileType.AutoHarvester, null) == null)
+        {
+            ResolvePlace(harvesterItem, ref t, depth + 1);
+            Why(ref t, "기계로 작물 키우기");
+            return;
+        }
+
+        var starved = NearestTile<AutoSeeder>(TileType.AutoSeeder, s => s.IsStarved);
+        if (starved != null)
+        {
+            ResolveRefill(starved, ref t, depth + 1);
+            return;
+        }
+
+        var anySeeder = NearestTile<AutoSeeder>(TileType.AutoSeeder, null);
+        if (anySeeder != null && MachineFarm.AssignedKinds() >= target)
+        {
+            var off = NearestTile<AutoSeeder>(TileType.AutoSeeder, s =>
+            {
+                MachineFarm.CountPlots(s, out _, out int covered);
+                return MachineFarm.SeedOf(s) != null && covered == 0;
+            });
+            if (off != null)
+            {
+                MachineFarm.CountPlots(off, out int near, out _);
+                World(ref t, off, near == 0 ? "곁에 밭!" : "곁에 수확기!", "자동파종기");
+                t.action = near == 0 ? $"이 파종기 둘레 {off.CoverageRadiusCells}칸 안에 밭이 없어요 — 플랜트를 깔아요"
+                                     : "이 파종기가 돌보는 밭에 수확기가 닿지 않아요 — 곁에 수확기를 세워요";
+                return;
+            }
+            World(ref t, anySeeder, "자라는 중", "자동파종기");
+            t.action = "파종기가 심은 작물이 자라고 있어요 — 수확기 범위 안의 밭이어야 기계 작물로 세어져요";
+            return;
+        }
+
+        var seed = NextMachineSeed();
+        if (seed != null) ResolveNewLine(seed, ref t, depth + 1);
+    }
+
+    // 씨앗이 떨어져 멈춘 작물 줄 살리기
+    private void ResolveRefill(AutoSeeder seeder, ref Target t, int depth)
+    {
+        var seed = seeder.LastSeedItem;
+        var elsewhere = MachineFarm.StorageWith(seed, seeder);
+        if (elsewhere != null)
+        {
+            if (LinkModeController.IsActive && LinkModeController.Source == seeder)
+            {
+                World(ref t, elsewhere, Pad.Active ? "A!" : "클릭!", "창고");
+                t.action = $"{seed.itemName}이 모이는 이 창고를 {(Pad.Active ? "조준해 A" : "클릭")}";
+                return;
+            }
+            World(ref t, seeder, "연결", "자동파종기");
+            t.action = Pad.Active ? $"파종기 앞에서 A → [연결하기] → {seed.itemName}이 모이는 창고 조준 후 A"
+                                  : $"파종기 클릭 → [연결하기] → {seed.itemName}이 모이는 창고 클릭";
+            Why(ref t, "멈춘 작물 줄 살리기");
+            return;
+        }
+        if (Count(seed) <= 0)
+        {
+            Shop(ref t, $"{seed.itemName}이 떨어졌어요 — [상점](B)에서 사요", seed);
+            Why(ref t, "멈춘 작물 줄 살리기");
+            return;
+        }
+        bool needSelect = SelectHint(seed, ref t);
+        World(ref t, seeder, "씨앗 떨어짐", "자동파종기");
+        if (needSelect) return;
+        t.action = Pad.Active ? $"{Eul(seed.itemName)} 든 채 파종기 앞에서 A — 이 작물 줄이 멈춰 있어요"
+                              : $"{Eul(seed.itemName)} 든 채 파종기 클릭 — 이 작물 줄이 멈춰 있어요";
+    }
+
+    // 파종기 하나에 작물 하나: 새 작물 줄 만들기
+    private void ResolveNewLine(FarmingItemData seed, ref Target t, int depth)
+    {
+        if (seed == null || depth > MaxDepth) return;
+        var own = NearestTile<AutoSeeder>(TileType.AutoSeeder, s => s.LastSeedItem == seed && s.IsStarved);
+        if (own != null)
+        {
+            ResolveRefill(own, ref t, depth + 1);
+            return;
+        }
+        var idle = NearestTile<AutoSeeder>(TileType.AutoSeeder, s => MachineFarm.SeedOf(s) == null);
+        if (idle == null)
+        {
+            ResolvePlace(NetWorld.Item("AutoSeeder"), ref t, depth + 1);
+            Why(ref t, $"{seed.itemName} 넣을 파종기 하나 더");
+            return;
+        }
+        if (Count(seed) <= 0)
+        {
+            Shop(ref t, $"[상점](B)에서 {seed.itemName} 사기", seed);
+            Why(ref t, "파종기에 넣을 씨앗");
+            return;
+        }
+        bool needSelect = SelectHint(seed, ref t);
+        World(ref t, idle, "씨앗 넣기", "자동파종기");
+        if (needSelect) return;
+        t.action = Pad.Active ? $"{Eul(seed.itemName)} 든 채 파종기 앞에서 A — 곁의 빈 밭에 알아서 심어요"
+                              : $"{Eul(seed.itemName)} 든 채 파종기 클릭 — 곁의 빈 밭에 알아서 심어요";
+    }
+
+    // 셔틀이 원하는 작물부터, 다음은 가방에 있는 씨앗
+    private static FarmingItemData NextMachineSeed()
+    {
+        FarmingItemData inBag = null, shop = null;
+        var svc = ShuttleService.Instance;
+        foreach (var it in GameDataRegistry.FindAll<FarmingItemData>())
+        {
+            if (it == null || it.itemType != FarmingItemType.Seed || it.seedData == null) continue;
+            if (it.unlockCoreLevel > CenterCore.CurrentLevel || MachineFarm.IsMachineGrown(it.seedData)) continue;
+            bool assigned = false;
+            foreach (var s in Tiles(TileType.AutoSeeder))
+                if (s is AutoSeeder a && MachineFarm.SeedOf(a) == it) { assigned = true; break; }
+            if (assigned) continue;
+            var crop = CropOf(it.seedData);
+            if (svc != null && crop != null)
+                foreach (var s in svc.Shuttles)
+                    if (!s.away && s.cargo.Exists(l => l.Missing > 0 && l.item == crop.name) && (Count(it) > 0 || CanBuy(it))) return it;
+            if (inBag == null && Count(it) > 0) inBag = it;
+            if (shop == null && CanBuy(it)) shop = it;
+        }
+        return inBag != null ? inBag : shop;
+    }
+
+    private static readonly List<TileItem> guideTiles = new();
+
+    private static List<TileItem> Tiles(TileType type)
+    {
+        guideTiles.Clear();
+        GridManager.Instance?.CollectTiles(type, guideTiles);
+        return guideTiles;
+    }
+
+    private void ResolveAutoDish(ref Target t, int depth)
+    {
+        if (depth > MaxDepth) return;
+        var kitchen = NearestTile<CatKitchen>(TileType.Kitchen, k => MachineFarm.LinkedToStorage(k));
+        if (kitchen == null) { ResolveLink(NetWorld.Item("Item_CatKitchen"), ref t, depth + 1); return; }
+        if (kitchen.Recipe == null)
+        {
+            World(ref t, kitchen, "메뉴", "고양이 주방");
+            t.action = Pad.Active ? "주방 앞에서 A → 요리 고르기" : "주방 클릭 → 메뉴판에서 요리 고르기";
+            return;
+        }
+
+        var storage = MachineFarm.LinkedStorage(kitchen);
+        foreach (var ing in kitchen.Recipe.ingredients)
+        {
+            if (ing.item == null || storage.GetCount(ing.item) + kitchen.GetInput(ing.item) >= ing.amount) continue;
+            if (Count(ing.item) > 0)
+            {
+                MoveToStorage(ing.item, storage, "주방이 꺼내 써요", ref t);
+                return;
+            }
+            ResolveObtain(ing.item, ing.amount, ref t, depth + 1);
+            Why(ref t, $"주방이 쓸 {ing.item.itemName}");
+            return;
+        }
+        if (kitchen.OutputCount > 0 && !storage.HasSpace)
+        {
+            World(ref t, storage, "가득!", "창고");
+            t.action = $"창고가 가득 차서 요리를 못 돌려놔요 — 창고 {(Pad.Active ? "앞에서 A" : "클릭")} → 안 쓰는 걸 꺼내거나, 대형 창고를 이어요";
+            return;
+        }
+        World(ref t, kitchen, "요리 중", "고양이 주방");
+        t.action = "주방이 혼자 요리해요 — 다 되면 창고로 돌려놔요";
+    }
+
+    private void ResolveStockpile(QuestObjective obj, ref Target t, int depth)
+    {
+        var item = obj.targetItem;
+        if (item == null || depth > MaxDepth) return;
+        int left = obj.targetAmount - obj.currentAmount;
+        ResolveObtain(item, Count(item) + left, ref t, depth + 1);
+        Why(ref t, $"큰 이주선 식량 {item.itemName} {obj.currentAmount}/{obj.targetAmount}{EtaNote(item, left)}");
+        // 요리가 많이 남았는데 한 곳에서만 만들면 기다리기만 하게 됨
+        var r = KitchenRecipeFor(item);
+        if (r != null && left >= 20 && CookingKitchens(r) <= 1 && t.action != null && t.action.EndsWith("요리하는 중이에요"))
+            t.action += IdleKitchen() ? " — 쉬는 주방도 같은 메뉴로 바꾸면 두 배 빨라요" : " — 주방을 하나 더 지어 같은 메뉴로 두면 두 배 빨라요";
+    }
+
+    private static bool IdleKitchen()
+    {
+        var gm = GridManager.Instance;
+        if (gm == null) return false;
+        gm.CollectTiles(TileType.Kitchen, tileBuffer);
+        foreach (var tile in tileBuffer)
+            if (tile is CatKitchen k && !k.IsGhost && k.IsPowered && !k.IsWorking) return true;
+        return false;
+    }
+
+    private static int CookingKitchens(CraftingRecipe r)
+    {
+        var gm = GridManager.Instance;
+        if (gm == null) return 0;
+        gm.CollectTiles(TileType.Kitchen, tileBuffer);
+        int n = 0;
+        foreach (var tile in tileBuffer)
+            if (tile is CatKitchen k && !k.IsGhost && k.Recipe == r) n++;
+        return n;
+    }
+
+    // 오래 걸리면 지금 속도를 알려 줌
+    private static string EtaNote(FarmingItemData item, int missing)
+    {
+        if (!FarmRate.IsFarmCrop(item)) return "";
+        int sec = FarmRate.EtaSeconds(item, missing);
+        return sec >= 60 ? $" · 지금 속도로 {FarmRate.Format(sec)}" : "";
     }
 
     private void ResolvePlant(FarmingItemData seedItem, ref Target t, int depth)
@@ -228,10 +953,15 @@ public class QuestGuide : MonoBehaviour
             if (ready != null) { World(ref t, ready, "수확!", "다 자란 작물"); t.action = "다 자란 작물을 먼저 거둬 밭을 비워요"; return; }
             var plotItem = NetWorld.Item("PlantTile");
             bool refilled = seedItem != null && NearestTile<AutoSeeder>(TileType.AutoSeeder, null) != null;
-            if (Count(plotItem) > 0 || refilled)
+            if (refilled)
+            {
+                ResolveNewLine(seedItem, ref t, depth + 1);
+                return;
+            }
+            if (Count(plotItem) > 0)
             {
                 ResolvePlace(plotItem, ref t, depth + 1);
-                Why(ref t, refilled ? $"{seedItem.itemName} 심을 빈 밭 만들기" : "빈 밭 만들기");
+                Why(ref t, "빈 밭 만들기");
                 return;
             }
             var soon = SoonestPlot();
@@ -260,6 +990,14 @@ public class QuestGuide : MonoBehaviour
         var ready = NearestPlot(p => p.CurrentState == PlantTile.PlantState.ReadyToHarvest && Grows(p, crop));
         if (ready != null)
         {
+            // 수확기가 창고가 차서 쉬는 밭이면 창고부터
+            var resting = MachineFarm.RestingHarvesterFor(ready);
+            if (resting != null && MachineFarm.FullestStorage(resting) is ItemStorage full)
+            {
+                World(ref t, full, "가득!", "창고");
+                t.action = "창고 자리가 모자라 수확기가 쉬고 있어요 — 창고를 비우거나 더 지어 이어요 (직접 거둬도 돼요)";
+                return;
+            }
             World(ref t, ready, "수확!", crop != null ? crop.itemName : "다 자란 작물");
             t.action = Pad.Active ? "다 자란 밭 앞에서 RT로 수확" : "다 자란 작물을 클릭해 거둬요";
             return;
@@ -461,8 +1199,11 @@ public class QuestGuide : MonoBehaviour
     {
         cookChain.Add(r);
         var dish = r.outputItem;
+        // 앞서 챙긴 요리를 만드는 주방은 빼고 고름
         var kitchen = NearestTile<CatKitchen>(TileType.Kitchen, k => k.OutputItem == dish && k.OutputCount > 0)
                    ?? NearestTile<CatKitchen>(TileType.Kitchen, k => k.Recipe == r && k.IsWorking)
+                   ?? NearestTile<CatKitchen>(TileType.Kitchen, k => k.Recipe == r)
+                   ?? NearestTile<CatKitchen>(TileType.Kitchen, k => !cookChain.Contains(k.Recipe))
                    ?? NearestTile<CatKitchen>(TileType.Kitchen, null);
         if (kitchen == null)
         {
@@ -492,7 +1233,7 @@ public class QuestGuide : MonoBehaviour
         }
         if (kitchen.Recipe != r && !kitchen.CanChangeRecipe)
         {
-            var free = NearestTile<CatKitchen>(TileType.Kitchen, k => k.Recipe == r || k.CanChangeRecipe);
+            var free = NearestTile<CatKitchen>(TileType.Kitchen, k => k.Recipe == r || (k.CanChangeRecipe && !cookChain.Contains(k.Recipe)));
             if (free != null) kitchen = free;
             else
             {
@@ -595,6 +1336,12 @@ public class QuestGuide : MonoBehaviour
     private void ResolvePlace(FarmingItemData item, ref Target t, int depth)
     {
         if (item == null || depth > MaxDepth) return;
+        // 상점에서만 파는 장식
+        if (Count(item) <= 0 && item.charm > 0 && RecipeFor(item) == null)
+        {
+            Shop(ref t, $"[상점](B) → 꾸미기 탭에서 {Eul(item.itemName)} 사요", item);
+            return;
+        }
         if (Count(item) <= 0)
         {
             ResolveCraft(item, ref t, depth + 1);
@@ -694,7 +1441,7 @@ public class QuestGuide : MonoBehaviour
         {
             var item = NetWorld.Item(bestLine.item);
             ResolveObtain(item, bestLine.Missing, ref t, depth + 1);
-            Why(ref t, $"셔틀 짐 ({item.itemName} {Count(item)}/{bestLine.Missing})");
+            Why(ref t, $"셔틀 짐 ({item.itemName} {Count(item)}/{bestLine.Missing}){EtaNote(item, bestLine.Missing - Count(item))}");
             if (t.ui == null && !t.hasWorld)
             {
                 t.shortcutLabel = "셔틀 창 열기";
@@ -722,7 +1469,7 @@ public class QuestGuide : MonoBehaviour
 
         t.ui            = ShuttleUI.IsOpen ? null : HudDock.ButtonRect(HudDock.Slot.Shuttle);
         t.uiLabel       = "열기!";
-        t.action        = "지금 셔틀 짐은 아직 구하기 어려워요 — 셔틀 창에서 [다른 짐 받기]";
+        t.action        = $"지금 셔틀 짐은 아직 구하기 어려워요 — {(Pad.Active ? "X " : "")}셔틀 창에서 [다른 짐 받기]";
         t.shortcutLabel = "셔틀 창 열기";
         t.shortcut      = () => ShuttleUI.Instance?.Open();
     }
@@ -779,6 +1526,14 @@ public class QuestGuide : MonoBehaviour
                     Why(ref t, r.type == CoreRequirementType.Residents ? $"문명 조건: 주민 {CoreProgress.ProgressText(r)}마리"
                                                                         : $"문명 조건: 셔틀 {CoreProgress.ProgressText(r)}번");
                     return;
+                case CoreRequirementType.Outposts:
+                    ResolveOutposts(null, ref t, depth + 1);
+                    Why(ref t, $"전초기지 {CoreProgress.ProgressText(r)}");
+                    return;
+                case CoreRequirementType.MachineCrops:
+                    ResolveMachineCrops(r.amount, ref t, depth + 1);
+                    Why(ref t, $"문명 조건: 기계 작물 {CoreProgress.ProgressText(r)}종");
+                    return;
                 case CoreRequirementType.Coins:
                     if (ShuttleService.Instance != null && ShuttleService.Instance.CompletableCount() > 0)
                     {
@@ -832,13 +1587,23 @@ public class QuestGuide : MonoBehaviour
         var shop = ShopUI.Instance;
         if (shop != null && shop.IsOpen && item != null)
         {
+            string press = Pad.Active ? "A로" : "눌러";
             var rect = sell ? shop.BagSlotRect(item) : shop.TileRect(item);
             if (rect != null)
             {
-                string press = Pad.Active ? "A로" : "눌러";
                 t.ui      = rect;
                 t.uiLabel = sell ? "팔기!" : "사기!";
                 t.action  = sell ? $"오른쪽 가방의 {Eul(item.itemName)} {press} 팔아요" : $"왼쪽 가게에서 {Eul(item.itemName)} {press} 사요";
+                return;
+            }
+            // 다른 가게 탭에 있으면 탭부터
+            var tabRect = sell ? null : shop.TabRectFor(item);
+            if (tabRect != null)
+            {
+                t.ui      = tabRect;
+                t.uiLabel = "여기!";
+                t.action  = Pad.Active ? $"LT/RT로 {ShopManager.TabName(ShopManager.TabOf(item))}에 가요"
+                                       : $"왼쪽 위 [{ShopManager.TabName(ShopManager.TabOf(item))}] 탭을 {press} 열어요";
                 return;
             }
         }
@@ -906,7 +1671,7 @@ public class QuestGuide : MonoBehaviour
         if (smelt != null && smelt.ingredients.Count > 0 && smelt.ingredients[0].item != null)
             return brief ? $"제련소에서 {smelt.ingredients[0].item.itemName} 녹이기" : $"제련소에 {Eul(smelt.ingredients[0].item.itemName)} 넣어 녹여요";
         if (item.itemType == FarmingItemType.Seed)
-            return CanBuy(item) ? (brief ? "상점" : "상점(B)에서 사요") : (brief ? "수확하면 나와요" : "작물을 거두면 나와요");
+            return CanBuy(item) ? (brief ? "상점" : Pad.Active ? "상점(십자키 →)에서 사요" : "상점(B)에서 사요") : (brief ? "수확하면 나와요" : "작물을 거두면 나와요");
         if (IsCompost(item)) return brief ? "퇴비통" : "퇴비통에 씨앗을 넣어 만들어요";
         if (RecipeFor(item) != null) return brief ? "제작" : "제작창에서 만들어요";
         return "";
@@ -1180,15 +1945,17 @@ public class QuestGuide : MonoBehaviour
         else shownWorld = Vector3.Lerp(shownWorld, current.world, 1f - Mathf.Exp(-12f * Time.unscaledDeltaTime));
         markerShown = true;
 
-        float t   = Time.unscaledTime;
-        float bob = Mathf.Abs(Mathf.Sin(t * 4.2f)) * 0.22f;
+        float t    = Time.unscaledTime;
+        float loud = Loud;
+        float bob  = Mathf.Abs(Mathf.Sin(t * 4.2f)) * 0.22f * loud;
         arrowSr.transform.position = shownWorld + Vector3.up * (current.worldLift + 0.12f + bob);
+        arrowSr.color = new Color(1f, 1f, 1f, Mathf.Lerp(0.7f, 1f, loud));
         bubbleAnchor = shownWorld + Vector3.up * (current.worldLift + 1.0f + bob);
 
         float k = (t * 0.9f) % 1f;
         ringSr.transform.position   = shownWorld + Vector3.down * 0.55f;
         ringSr.transform.localScale = Vector3.one * Mathf.Lerp(0.5f, 1.4f, k);
-        ringSr.color = new Color(Accent.r, Accent.g, Accent.b, (1f - k) * 0.85f);
+        ringSr.color = new Color(Accent.r, Accent.g, Accent.b, (1f - k) * 0.85f * loud);
     }
 
     private RectTransform overlay;
@@ -1198,9 +1965,11 @@ public class QuestGuide : MonoBehaviour
     private RectTransform hlRT;
     private Image         hlFrame;
     private RectTransform hlPointer;
+    private Image         hlPointerImg;
 
     private Vector3         bubbleAnchor;
     private RectTransform   worldBubble, uiBubble;
+    private CanvasGroup     worldBubbleCG, uiBubbleCG;
     private TextMeshProUGUI worldBubbleText, uiBubbleText;
 
     private RectTransform MakeBubble(string name, float fontSize, out TextMeshProUGUI label)
@@ -1214,6 +1983,7 @@ public class QuestGuide : MonoBehaviour
         label.outlineWidth = 0.18f;
         label.outlineColor = new Color32(170, 70, 95, 255);
         foreach (var g in pill.GetComponentsInChildren<Graphic>()) g.raycastTarget = false;
+        pill.gameObject.AddComponent<CanvasGroup>().blocksRaycasts = false;
         pill.gameObject.SetActive(false);
         return pill;
     }
@@ -1222,11 +1992,13 @@ public class QuestGuide : MonoBehaviour
     {
         var cam = Camera.main;
         string text = current.worldLabel;
-        show &= cam != null && !string.IsNullOrEmpty(text);
+        float loud = Loud;
+        show &= loud > 0f && cam != null && !string.IsNullOrEmpty(text);
         Vector3 sp = show ? cam.WorldToScreenPoint(bubbleAnchor) : Vector3.zero;
         show &= sp.z > 0f && sp.x > 0f && sp.x < Screen.width && sp.y > 0f && sp.y < Screen.height;
         if (worldBubble.gameObject.activeSelf != show) worldBubble.gameObject.SetActive(show);
         if (!show) return;
+        worldBubbleCG.alpha = loud;
         if (worldBubbleText.text != text) worldBubbleText.text = text;
         sp = AvoidHud(sp, worldBubble);
         RectTransformUtility.ScreenPointToLocalPointInRectangle(overlay, sp, null, out var local);
@@ -1317,11 +2089,14 @@ public class QuestGuide : MonoBehaviour
         pImg.sprite = LabArt.Pixel("guideArrow", ArrowRows, "##7A5A4F w#F7879F", new Vector2(0.5f, 0f));
         pImg.raycastTarget = false;
         hlPointer = pImg.rectTransform;
+        hlPointerImg = pImg;
         hlPointer.sizeDelta = new Vector2(36f, 36f);
         hlRT.gameObject.SetActive(false);
 
         worldBubble = MakeBubble("WorldBubble", 17f, out worldBubbleText);
         uiBubble    = MakeBubble("UiBubble", 14f, out uiBubbleText);
+        worldBubbleCG = worldBubble.GetComponent<CanvasGroup>();
+        uiBubbleCG    = uiBubble.GetComponent<CanvasGroup>();
     }
 
     private void UpdateEdgeArrow(bool want)
@@ -1345,7 +2120,7 @@ public class QuestGuide : MonoBehaviour
         float sx = (half.x - InsetSide) / Mathf.Max(0.001f, Mathf.Abs(dir.x));
         float sy = (half.y - (dir.y > 0f ? InsetTop : InsetBottom)) / Mathf.Max(0.001f, Mathf.Abs(dir.y));
         Vector2 at = dir * Mathf.Min(sx, sy);
-        float pulse = 1f + Mathf.Sin(Time.unscaledTime * 6f) * 0.06f;
+        float pulse = 1f + Mathf.Sin(Time.unscaledTime * 6f) * 0.06f * Loud;
         edgeRT.anchoredPosition = at;
         edgeRT.localScale = Vector3.one * pulse;
         edgeTip.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg - 90f);
@@ -1377,8 +2152,10 @@ public class QuestGuide : MonoBehaviour
                        screenRect.xMax > 0f && screenRect.xMin < Screen.width && screenRect.yMax > 0f && screenRect.yMin < Screen.height;
             }
         }
+        float loud = Loud;
         if (hlRT.gameObject.activeSelf != show) hlRT.gameObject.SetActive(show);
-        if (uiBubble.gameObject.activeSelf != show) uiBubble.gameObject.SetActive(show);
+        bool showBubble = show && loud > 0f;
+        if (uiBubble.gameObject.activeSelf != showBubble) uiBubble.gameObject.SetActive(showBubble);
         if (!show) { hlTarget = null; return; }
 
         if (hlTarget != target) hlTarget = target;
@@ -1387,18 +2164,20 @@ public class QuestGuide : MonoBehaviour
         const float Pad = 7f;
         Vector2 size = lmax - lmin + Vector2.one * Pad * 2f;
         float t = Time.unscaledTime;
-        float pulse = (Mathf.Sin(t * 6f) + 1f) * 0.5f;
+        float pulse = (Mathf.Sin(t * 6f) + 1f) * 0.5f * loud;
         hlRT.anchoredPosition = (lmin + lmax) * 0.5f;
         hlRT.sizeDelta = size;
         hlRT.localScale = Vector3.one * (1f + pulse * 0.05f);
-        hlFrame.color = new Color(Accent.r, Accent.g, Accent.b, 0.65f + pulse * 0.35f);
+        hlFrame.color = new Color(Accent.r, Accent.g, Accent.b, Mathf.Lerp(0.55f, 0.65f, loud) + pulse * 0.35f);
 
         bool fromBelow = screenRect.yMax > Screen.height - 90f;
-        float bob = Mathf.Abs(Mathf.Sin(t * 4.2f)) * 8f;
+        float bob = Mathf.Abs(Mathf.Sin(t * 4.2f)) * 8f * loud;
+        hlPointerImg.color = new Color(1f, 1f, 1f, loud);
+        uiBubbleCG.alpha = loud;
         hlPointer.localRotation = Quaternion.Euler(0f, 0f, fromBelow ? 180f : 0f);
         hlPointer.anchoredPosition = new Vector2(0f, fromBelow ? -(size.y * 0.5f + 2f + bob) : size.y * 0.5f + 2f + bob);
 
-        string label = string.IsNullOrEmpty(current.uiLabel) ? "클릭!" : current.uiLabel;
+        string label = !string.IsNullOrEmpty(current.uiLabel) ? current.uiLabel : global::Pad.Active ? "A!" : "클릭!";
         if (uiBubbleText.text != label) uiBubbleText.text = label;
         float reach = size.y * 0.5f + 2f + bob + hlPointer.sizeDelta.y + 2f;
         uiBubble.pivot = new Vector2(0.5f, fromBelow ? 1f : 0f);

@@ -24,7 +24,8 @@ public class EndingUI : MonoBehaviour
 
     private static string Message =>
         "선발대가 처음 내려앉은 불모지가 고양이들의 새 고향이 되었어요.\n" +
-        $"셔틀로 먼저 건너온 주민 {ShuttleService.Population}마리에 이어, 큰 이주선이\n" +
+        (ShuttleService.Population > 0 ? $"셔틀로 먼저 건너온 주민 {ShuttleService.Population}마리에 이어, 큰 이주선이\n"
+                                       : "셔틀로 먼저 건너온 주민들에 이어, 큰 이주선이\n") +
         "고향별에 남은 고양이들을 모두 태우고 착륙장에 내려앉았어요.\n" +
         "행성 이주 프로토콜 완료 — 고양이 대원, 임무를 완수했어요!";
 

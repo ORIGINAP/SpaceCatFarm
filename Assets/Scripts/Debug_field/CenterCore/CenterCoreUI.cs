@@ -237,8 +237,10 @@ public class CenterCoreUI : MonoBehaviour
         if (facilities.Count > 0) parts.Add("문명 시설 " + string.Join(", ", facilities.ConvertAll(r => r.outputItem.itemName)));
         if (others.Count > 0)     parts.Add("제작 " + string.Join(", ", others.ConvertAll(r => r.outputItem.itemName)));
         if (dishes.Count > 0)     parts.Add("요리 " + string.Join(", ", dishes.ConvertAll(r => r.outputItem.itemName)));
-        var items = CenterCore.ItemsUnlockedAt(nextLevel);
+        var items = CenterCore.ItemsUnlockedAt(nextLevel).FindAll(i => i.itemType == FarmingItemType.Seed);
         if (items.Count > 0) parts.Add("새 씨앗 " + string.Join(", ", items.ConvertAll(i => i.itemName)));
+        foreach (ShopTab tab in System.Enum.GetValues(typeof(ShopTab)))
+            if (tab != ShopTab.Seeds && ShopManager.TabLevel(tab) == nextLevel) parts.Add(ShopManager.TabName(tab));
         unlockText.text = parts.Count > 0 ? $"해금 예정: {string.Join(" · ", parts)}" : "";
     }
 

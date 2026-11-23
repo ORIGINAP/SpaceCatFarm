@@ -5,7 +5,7 @@ using System.Collections.Generic;
 public class GrowthBooster : TileItem, ICoverageArea
 {
     [Header("성장 촉진")]
-    [Tooltip("효과 범위 (맨해튼 칸)")]
+    [Tooltip("효과 범위 (사각형 칸)")]
     [SerializeField, Min(1)] private int   boostRadius      = 3;
     [Tooltip("성장 속도 배율 (1.5 = 50% 빨리)")]
     [SerializeField, Min(1f)] private float growthMultiplier = 1.5f;
@@ -74,7 +74,7 @@ public class GrowthBooster : TileItem, ICoverageArea
             if (b == null || !b.isPowered || b.growthMultiplier <= best) continue;
             int dx = Mathf.Max(Mathf.Max(b.FootprintMin.x - cell.x, 0), cell.x - b.FootprintMax.x);
             int dy = Mathf.Max(Mathf.Max(b.FootprintMin.y - cell.y, 0), cell.y - b.FootprintMax.y);
-            if (dx + dy <= b.boostRadius) best = b.growthMultiplier;
+            if (Mathf.Max(dx, dy) <= b.boostRadius) best = b.growthMultiplier;
         }
         return best;
     }

@@ -144,7 +144,7 @@ public class LabSleepVote : LabExperiment
         hud.gameObject.SetActive(night);
         if (!night) return;
         hudText.text   = $"<size=80%>밤이에요 — 모두 잠자면 아침이 와요</size>\n잠자기 {votes}/{total}";
-        hudButton.text = voted ? "자는 중… (취소)" : "잠자기 (N)";
+        hudButton.text = voted ? "자는 중… (취소)" : Pad.Active ? "잠자기 (↓꾹 실험실 창)" : "잠자기 (N)";
     }
 
     private static IEnumerator SleepFx()

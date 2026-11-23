@@ -91,7 +91,9 @@ public class GamepadRuntime : MonoBehaviour
         if (!mouseInit) { lastMouse = m; mouseInit = true; }
         bool mouseUsed = (m - lastMouse).sqrMagnitude > 9f
                       || GameInput.GetMouseButtonDown(0) || GameInput.GetMouseButtonDown(1) || GameInput.GetMouseButtonDown(2)
-                      || GameInput.MouseScrollDelta.sqrMagnitude > 0.01f;
+                      || GameInput.MouseScrollDelta.sqrMagnitude > 0.01f
+                      // 조이스틱 · 핀치 손가락도 터치로 셈
+                      || TouchInput.TouchedThisFrame;
         lastMouse = m;
 
         if (Gamepad.current == null || mouseUsed) Pad.Active = false;

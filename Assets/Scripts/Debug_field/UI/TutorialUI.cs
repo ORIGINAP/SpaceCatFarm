@@ -14,7 +14,7 @@ public class TutorialUI : MonoBehaviour
 
     private const string Title = "행성 이주 프로토콜 발동";
     private const string CocoLine = "대원님, 고향 고양고양이 행성의 자원이 바닥나 행성 이주 프로토콜이 시작됐어요! " +
-                                    "우리가 선발대로 이 불모지에 먼저 내려왔어요. 이 땅을 개척해서 고양이들이 살 새 보금자리를 만들어요.";
+                                    "우리가 선발대로 먼저 내려왔는데… 이 별은 보랏빛 오염 안개로 뒤덮여 있어요! 에너지 코어로 땅을 정화하며 넓혀 가서, 고양이들이 살 새 보금자리를 만들어요.";
 
     private static TutorialUI current;
 
@@ -70,6 +70,12 @@ public class TutorialUI : MonoBehaviour
         FillControls();
         CuteUIKit.WiggleEars(this, panelRT);
         yield return FadePanel(true, 0.3f);
+    }
+
+    // 데모 진행용
+    public static void CloseNow()
+    {
+        if (current != null) current.Close();
     }
 
     private void Close()
@@ -147,11 +153,13 @@ public class TutorialUI : MonoBehaviour
         var flow = NewRow(dialogGO.transform, "Flow");
         flow.GetComponent<HorizontalLayoutGroup>().childAlignment = TextAnchor.MiddleCenter;
         var stage7 = CoreStageTable.Load()?.Stage(7);
-        FlowCard(flow, "1", "농사", "씨앗을 심고\n다 자라면 거둬요", NetWorld.Item("BlueStar")?.icon, CuteUIKit.MintTag, CuteUIKit.MintText);
+        FlowCard(flow, "1", "정화", "코어 · 정화탑이\n오염된 땅을 되살려요", NetWorld.Item("Item_Purifier")?.icon, CuteUIKit.SkyTag, CuteUIKit.SkyText);
         Arrow(flow);
-        FlowCard(flow, "2", "셔틀", "작물을 실어 보내면\n고양이들이 건너와요", ShuttleUI.ShipSprite ?? HudDock.RocketIcon, CuteUIKit.ButterSoft, CuteUIKit.AmberText);
+        FlowCard(flow, "2", "농사", "정화된 땅에 심고\n다 자라면 거둬요", NetWorld.Item("BlueStar")?.icon, CuteUIKit.MintTag, CuteUIKit.MintText);
         Arrow(flow);
-        FlowCard(flow, "3", "문명", "주민이 늘면\n기지가 도시로 커져요", stage7 != null ? stage7.spriteOn : null, CuteUIKit.PinkSoft, CuteUIKit.CoralText);
+        FlowCard(flow, "3", "셔틀", "작물을 실어 보내면\n고양이들이 건너와요", ShuttleUI.ShipSprite ?? HudDock.RocketIcon, CuteUIKit.ButterSoft, CuteUIKit.AmberText);
+        Arrow(flow);
+        FlowCard(flow, "4", "문명", "주민이 늘면\n코어가 자라 땅이 넓어져요", stage7 != null ? stage7.spriteOn : null, CuteUIKit.PinkSoft, CuteUIKit.CoralText);
 
         var guide = CuteUIKit.Text(dialogGO.transform, "<b>왼쪽 위 퀘스트</b>와 <b>분홍 화살표</b>가 할 일을 하나씩 알려 줄게요.", 15f, CuteUIKit.Cocoa);
         guide.richText = true;
@@ -229,7 +237,8 @@ public class TutorialUI : MonoBehaviour
             Key(row1, "LT 꾹", "해체");
             Key(row2, "Y", "가방");
             Key(row2, "십자키 ↑", "제작");
-            Key(row2, "LB / RB", "핫바 · 창 넘기기");
+            Key(row2, "X", "셔틀");
+            Key(row2, "LB / RB", "핫바");
         }
         else
         {

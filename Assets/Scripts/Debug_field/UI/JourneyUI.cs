@@ -92,7 +92,8 @@ public class JourneyUI : MonoBehaviour
 
     private void Update()
     {
-        bool key = !TextInputFocus.Active && !Lab.Active && GameInput.GetKeyDown(ToggleKey);
+        bool key = !TextInputFocus.Active && !Lab.Active
+                   && (GameInput.GetKeyDown(ToggleKey) || (InputManager.Instance != null && InputManager.Instance.JourneyButton));
         if (!isOpen)
         {
             if (key && PlayerTileController.Instance != null && !PlayerTileController.IsPauseMenuOpen()) Open();

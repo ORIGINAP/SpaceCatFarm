@@ -60,6 +60,10 @@ public class InputManager : MonoBehaviour
 
     public ResidentCat PadResidentTarget => PadWorld ? residentTarget : null;
 
+    private readonly PadTapHold padX    = new(PadButton.X);
+    private readonly PadTapHold padDown = new(PadButton.Down);
+    private readonly PadTapHold padBack = new(PadButton.Back);
+
     private void Awake()
     {
         if (!Services.Register(this)) { Destroy(gameObject); return; }
@@ -78,7 +82,10 @@ public class InputManager : MonoBehaviour
         else { lockedBlock = null; lockedDismantle = null; }
         if (!aimValid) reticleSnap = true;
 
-        if (Pad.WorldDown(PadButton.Down)) QuestUI.Instance?.ToggleLog();
+        padX.Tick(Pad.World && !LabPhotoMode.HidesHud);
+        padDown.Tick(Pad.World);
+        padBack.Tick(Pad.Active && !TextInputFocus.Active);
+        if (padDown.Tapped) QuestUI.Instance?.ToggleLog();
         AddWorldHints();
     }
 
@@ -310,6 +317,15 @@ public class InputManager : MonoBehaviour
         bool seed   = item != null && item.itemType == FarmingItemType.Seed;
         bool sickle = item != null && item.itemType == FarmingItemType.Tool && item.harvestRadius > 0;
         bool fert   = item != null && item.IsFertilizer;
+        bool water  = item != null && item.IsWaterCan;
+
+        if (item != null && item.IsScanner)
+        {
+            lockedBlock = null;
+            aimPoint    = reticlePoint = me;
+            useVerb     = "탐사";
+            return;
+        }
 
         if (freeAim)
         {
@@ -319,7 +335,7 @@ public class InputManager : MonoBehaviour
             return;
         }
 
-        if (!seed && !sickle && !fert)
+        if (!seed && !sickle && !fert && !water)
         {
             var block = PickBlock(me, facing);
             if (block != null)
@@ -332,12 +348,12 @@ public class InputManager : MonoBehaviour
         }
         lockedBlock = null;
 
-        var plant = PickPlant(feet, facing, allowEmpty: seed, fertilize: fert);
+        var plant = PickPlant(feet, facing, allowEmpty: seed || water, fertilize: fert);
         if (plant != null)
         {
             aimPoint      = reticlePoint = gm.GridToWorld(plant.GridPosition);
             reticleStrong = true;
-            useVerb       = plant.CurrentState == PlantTile.PlantState.ReadyToHarvest ? "수확" : fert ? "퇴비 주기" : "심기";
+            useVerb       = plant.CurrentState == PlantTile.PlantState.ReadyToHarvest ? "수확" : fert ? "퇴비 주기" : water ? "물 주기" : "심기";
             return;
         }
 
@@ -483,7 +499,7 @@ public class InputManager : MonoBehaviour
 
     private static bool IsInteractable(TileItem t)
         => t != null && !t.IsGhost &&
-           (t is CenterCore || t is SolarPanel || LinkRules.IsLinkable(t) || (t is Generator g && g.UsesFuel) ||
+           (t is CenterCore || t is SolarPanel || t is ResidentCamp || LinkRules.IsLinkable(t) || (t is Generator g && g.UsesFuel) ||
             (t is PlantTile p && p.CurrentState == PlantTile.PlantState.ReadyToHarvest));
 
     private static string InteractVerb(TileItem t, FarmingItemData item) => t switch
@@ -492,6 +508,7 @@ public class InputManager : MonoBehaviour
         ShuttlePad pad when pad.Shuttle != null && ShuttleService.Loadable(pad.Shuttle) > 0 => "짐 싣기",
         ShuttlePad                                                               => "셔틀",
         SolarPanel                                                               => "정보",
+        ResidentCamp                                                             => "정보",
         Generator g when g.UsesFuel && item != null && item.canUseFuel           => "연료 넣기",
         AutoSeeder when item != null && item.itemType == FarmingItemType.Seed    => "씨앗 넣기",
         _                                                                        => "열기",
@@ -501,6 +518,7 @@ public class InputManager : MonoBehaviour
     {
         var gm = GridManager.Instance;
         bool seed = item != null && item.itemType == FarmingItemType.Seed;
+        if (item != null && item.IsScanner) return "탐사";
         int n = Physics2D.OverlapPoint(p, ContactFilter2D.noFilter, pointHits);
         for (int i = 0; i < n; i++)
             if (pointHits[i] != null && pointHits[i].GetComponent<ResourceBlock>() != null)
@@ -510,6 +528,7 @@ public class InputManager : MonoBehaviour
             if (plant.CurrentState == PlantTile.PlantState.ReadyToHarvest) return "수확";
             if (seed && plant.CurrentState == PlantTile.PlantState.Empty) return "심기";
             if (item != null && item.IsFertilizer && plant.Fertility < PlantTile.MaxFertility) return "퇴비 주기";
+            if (item != null && item.IsWaterCan) return "물 주기";
         }
         return null;
     }
@@ -589,8 +608,13 @@ public class InputManager : MonoBehaviour
         if (dismantleTarget != null) h.Add(new PadHint(PadGlyph.LT, "해체"));
         if (ptc.SelectedItem != null) h.Add(new PadHint(PadGlyph.B, "빈손"));
         h.Add(new PadHint(PadGlyph.LB, PadGlyph.RB, "핫바"));
-        h.Add(new PadHint(PadGlyph.Y, "가방"));
-        h.Add(new PadHint(PadGlyph.Back, "미니맵"));
+        if (AINpc.Instance != null) h.Add(new PadHint(PadGlyph.X, $"꾹 {AINpc.NpcName}"));
+        // 메뉴 버튼이 없을 때만
+        if (!HudDock.Visible)
+        {
+            h.Add(new PadHint(PadGlyph.Y, "가방"));
+            h.Add(new PadHint(PadGlyph.Back, "지도"));
+        }
     }
 
     public Vector3 CursorScreenPos
@@ -603,10 +627,14 @@ public class InputManager : MonoBehaviour
         }
     }
 
+    // 전시 데모가 대신 걸을 때
+    public Vector2 ScriptedMove { get; set; }
+
     public Vector2 MoveVector
     {
         get
         {
+            if (ScriptedMove != Vector2.zero) return ScriptedMove;
             if (TextInputFocus.Active) return Vector2.zero;
             var kb = new Vector2(
                 (GameInput.GetKey(KeyCode.D) || GameInput.GetKey(KeyCode.RightArrow) ? 1f : 0f) - (GameInput.GetKey(KeyCode.A) || GameInput.GetKey(KeyCode.LeftArrow) ? 1f : 0f),
@@ -642,6 +670,10 @@ public class InputManager : MonoBehaviour
     public bool TechButton      => Pad.WorldDown(PadButton.Left);
     public bool InventoryButton => Pad.WorldDown(PadButton.Y);
     public bool SaveMenuButton  => Pad.ActiveDown(PadButton.Start);
-    public bool MinimapButton   => Pad.ActiveDown(PadButton.Back);
+    public bool ShuttleButton   => padX.Tapped;
+    public bool CocoButton      => padX.Long;
+    public bool JourneyButton   => padDown.Long;
+    public bool MinimapButton   => padBack.Tapped;
+    public bool MinimapHideButton => padBack.Long;
     public bool GridButton      => Pad.WorldDown(PadButton.L3);
 }

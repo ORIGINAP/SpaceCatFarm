@@ -46,6 +46,8 @@ public class StarterKit : MonoBehaviour
         // 멀티: 호스트만 배치
         if (!NetSession.IsReplica)
         {
+            // 첫 프레임엔 정화 영역이 아직 비어 있음
+            Purify.SnapAll();
             PlaceStarterFarm();
             ShuttleService.PlaceStarterPad();
         }

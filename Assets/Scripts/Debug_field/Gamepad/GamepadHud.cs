@@ -99,7 +99,7 @@ public static class GamepadHud
     internal static void EndFrame()
     {
         EnsureCanvas();
-        bool show = Pad.Active;
+        bool show = Pad.Active && !LabPhotoMode.HidesHud;
         canvas.enabled = show;
         if (!show) { frameVisible = false; return; }
 
@@ -161,7 +161,8 @@ public static class GamepadHud
 
         hintBar.gameObject.SetActive(hints.Count > 0);
         float k = canvasRT.rect.width / Mathf.Max(1f, Screen.width);
-        hintBar.anchoredPosition = new Vector2(-14f - RightPanelInset() * k, 12f);
+        float x = -14f - RightPanelInset() * k;
+        hintBar.anchoredPosition = new Vector2(x, HudDock.Visible ? AboveHotbar(x, HudDock.HintBarY, k) : 12f);
         if (key == shownHintKey && hintBuilt) return;
         shownHintKey = key;
         hintBuilt    = true;
@@ -192,10 +193,23 @@ public static class GamepadHud
 
     private static readonly Vector3[] corners = new Vector3[4];
 
+    // 폰 · 큰 UI 크기에선 막대가 핫바 끝에 걸려서 핫바 위로
+    private static float AboveHotbar(float x, float y, float k)
+    {
+        var tpu  = TilePlacementUI.Instance;
+        var last = tpu != null ? tpu.SlotRect(Inventory.HotbarSize - 1) : null;
+        if (last == null || !last.gameObject.activeInHierarchy) return y;
+        var hotbarCanvas = last.GetComponentInParent<Canvas>();
+        var cam = hotbarCanvas == null || hotbarCanvas.rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : hotbarCanvas.rootCanvas.worldCamera;
+        last.GetWorldCorners(corners);
+        Vector2 topRight = RectTransformUtility.WorldToScreenPoint(cam, corners[2]) * k;
+        float left = canvasRT.rect.width + x - hintBar.rect.width;
+        return topRight.x > left && topRight.y > y ? topRight.y + 10f : y;
+    }
+
     private static float RightPanelInset()
     {
         float inset = 0f;
-        if (HelpUI.AnyOpen)     inset = Mathf.Max(inset, InsetOf(HelpUI.PanelRoot));
         if (DevPanelUI.AnyOpen) inset = Mathf.Max(inset, InsetOf(DevPanelUI.PanelRoot));
         return inset;
     }

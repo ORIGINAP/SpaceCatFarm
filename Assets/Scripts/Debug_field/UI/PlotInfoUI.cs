@@ -7,6 +7,9 @@ using TMPro;
 public class PlotInfoUI : MonoBehaviour
 {
     private const float RefreshInterval = 0.15f;
+    // 이만큼 머물러야 뜸
+    private const float HoverDelay = 0.8f;
+    private const float FadeInSeconds = 0.15f;
 
     private RectTransform   card;
     private CanvasGroup     group;
@@ -15,6 +18,8 @@ public class PlotInfoUI : MonoBehaviour
     private Camera          cam;
     private PlantTile       shown;
     private float           nextRefresh;
+    private PlantTile       hovering;
+    private float           hoverSince;
     private readonly List<GrowthFactor> factors = new();
     private readonly StringBuilder sb = new();
 
@@ -23,12 +28,26 @@ public class PlotInfoUI : MonoBehaviour
     private void Update()
     {
         var plot = Hovered();
+        // 캐거나 심는 중에는 안 띄우고, 손을 뗀 뒤 다시 셈
+        var im = InputManager.Instance;
+        if (im != null && (im.ActionHeld || im.RemoveHeld)) plot = null;
         if (plot == null)
         {
             // 해체로 사라진 밭이면 숨김
+            hovering = null;
             if (group.alpha > 0f) { shown = null; group.alpha = 0f; }
             return;
         }
+        if (plot != hovering)
+        {
+            hovering   = plot;
+            hoverSince = Time.unscaledTime;
+            shown      = null;
+            group.alpha = 0f;
+            return;
+        }
+        float waited = Time.unscaledTime - hoverSince - HoverDelay;
+        if (waited < 0f) return;
 
         if (plot != shown || Time.unscaledTime >= nextRefresh)
         {
@@ -36,7 +55,7 @@ public class PlotInfoUI : MonoBehaviour
             nextRefresh = Time.unscaledTime + RefreshInterval;
             text.text   = Describe(plot);
         }
-        group.alpha = 1f;
+        group.alpha = Mathf.Clamp01(waited / FadeInSeconds);
         Follow();
     }
 
@@ -133,6 +152,12 @@ public class PlotInfoUI : MonoBehaviour
                                  : "<color=#A88E82>퇴비 없음 — 퇴비를 들고 클릭하면 수확이 늘어요</color>");
 
         if (FarmConditions.IsWatered(plot.GridPosition)) sb.Append("\n<color=#3F78AE>물을 받고 있어요</color>");
+        var soil = plot.SoilKind;
+        if (soil != SoilType.None)
+        {
+            if (Soil.Suits(plot)) sb.Append($"\n<color=#6E57B5>{Soil.Name(soil)} — 수확 +{Soil.ExtraCrops}개</color>");
+            else sb.Append($"\n<color=#6E57B5>{Soil.Name(soil)}</color> <color=#A88E82>— 잘 자라는 작물: {Soil.CropsText(soil)}</color>");
+        }
         if (FarmConditions.InGreenhouse(plot.GridPosition)) sb.Append("  <color=#3F8A66>온실이 지켜 줘요</color>");
 
         if (product != null && product.goldenVariant != null)

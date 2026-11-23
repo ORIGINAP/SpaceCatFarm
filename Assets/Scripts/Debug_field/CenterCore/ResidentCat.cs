@@ -9,6 +9,7 @@ public class ResidentCat : MonoBehaviour
     private const float TalkRange   = 8f;
     private const float HopSeconds  = 0.45f;
     private const float TalkGap     = 5f;
+    private const float GoHomeMaxSeconds = 15f;
 
     private static float nextAnyTalk;
 
@@ -43,10 +44,11 @@ public class ResidentCat : MonoBehaviour
     private Vector2        hopFrom, hopTo;
     private float          hopStart = -1f;
     private bool           hopSpeaks;
+    private bool           hopQuiet;
     private SpriteRenderer body;
 
     public static ResidentCat Spawn(Vector2 at, TileItem home, string name, int color, int accessory, bool hop,
-                                    float hopDelay = 0f, int hopIndex = 0, bool speak = true)
+                                    float hopDelay = 0f, int hopIndex = 0, bool speak = true, bool quiet = false)
     {
         var player = Player.Local;
         if (player == null) return null;
@@ -90,6 +92,7 @@ public class ResidentCat : MonoBehaviour
             if (GridManager.Instance != null) cat.hopTo = GridManager.Instance.ClampToWorldBounds(cat.hopTo);
             cat.hopStart  = Time.time + hopDelay;
             cat.hopSpeaks = speak;
+            cat.hopQuiet  = quiet;
             cat.target    = cat.hopTo;
             cat.idleUntil = cat.hopStart + HopSeconds + Random.Range(0.8f, 1.6f);
             cat.nextTalk  = Time.time + Random.Range(25f, 40f);
@@ -110,11 +113,19 @@ public class ResidentCat : MonoBehaviour
 
     public TileItem Home => home;
 
+    // 축제 때 하트
+    public void Cheer()
+    {
+        if (body != null && body.enabled && !goingHome && hopStart < 0f) Heart();
+    }
+
     public void GoHome()
     {
         goingHome = true;
-        goneAt    = Time.time + 3f;
-        if (home == null) Destroy(gameObject);
+        if (home == null) { Destroy(gameObject); return; }
+        // 멀면 걸어갈 시간을 줌
+        float walk = Vector2.Distance(transform.position, home.transform.position) / Speed;
+        goneAt = Time.time + Mathf.Clamp(walk + 1f, 3f, GoHomeMaxSeconds);
     }
 
     private void OnDestroy()
@@ -194,7 +205,7 @@ public class ResidentCat : MonoBehaviour
                 hopStart = -1f;
                 transform.position = new Vector3(hopTo.x, hopTo.y, transform.position.z);
                 if (hopSpeaks) Say(ArrivalLine());
-                Heart();
+                if (!hopQuiet) Heart();
             }
             else
             {
@@ -339,8 +350,10 @@ public class ResidentCat : MonoBehaviour
         t.alignment = TextAlignmentOptions.Center;
         t.color = CuteUIKit.Strawberry;
         t.sortingLayerID = WorldFx.TopLayer;
-        t.sortingOrder = 201;
+        // 말풍선(198~200) 위에 판까지
+        t.sortingOrder = 203;
         t.rectTransform.sizeDelta = new Vector2(1f, 1f);
+        TextPlate.Attach(t, CuteUIKit.Strawberry);
         float x = aboveBubble ? Random.Range(-0.45f, 0.45f) : 0.25f;
         float y = aboveBubble ? 1.4f : 0.75f;
         go.AddComponent<RiseAndFade>().Begin(new Vector3(x * inv, y * inv, 0f), (aboveBubble ? 0.45f : 0.6f) * inv, 1.1f, delay);

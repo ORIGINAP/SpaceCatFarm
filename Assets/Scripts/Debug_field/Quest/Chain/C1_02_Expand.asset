@@ -35,5 +35,7 @@ MonoBehaviour:
     targetItem: {fileID: 0}
     targetTechNodeId: 
     targetAmount: 4
-  rewards: []
+  rewards:
+  - item: {fileID: 11400000, guid: 55dd012f93bcbef47bbaf51223a496a5, type: 2}
+    amount: 1
   rewardCoins: 50

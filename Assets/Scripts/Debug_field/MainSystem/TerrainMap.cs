@@ -21,6 +21,11 @@ public class TerrainMap
     private const float MesaScale     = 0.06f;
     private const float MesaCut       = 0.66f;
 
+    private const int   SoilRadiusMin   = 8;
+    private const int   SoilRadiusMax   = 12;
+    private const float SoilAngleJitter = 0.7f;
+    private const float SoilWobbleScale = 0.13f;
+
     public static TerrainMap Current => Services.Get<TerrainMap>();
 
     public int MinX { get; }
@@ -29,9 +34,35 @@ public class TerrainMap
     public int VertsY { get; }
 
     private readonly byte[] bits;
+    // 꼭짓점별 특산 토양
+    private readonly byte[] soilBits;
+    private readonly List<SoilPatch> soilPatches = new();
+    // 꼭짓점별 바이옴
+    private readonly byte[] biomeBits;
+    private readonly WorldTheme[] sectorBiome = new WorldTheme[SectorCount];
+    private float sectorOffset;
+    private readonly List<Landmark> landmarks = new();
     // 멀티 입장 스냅샷용
     private readonly HashSet<int> carved = new();
     private readonly int worldMinX, worldMinY, worldMaxX, worldMaxY;
+
+    public IReadOnlyList<SoilPatch> SoilPatches => soilPatches;
+    public IReadOnlyList<Landmark> Landmarks => landmarks;
+    public WorldTheme StartBiome { get; private set; }
+
+    public readonly struct Landmark
+    {
+        public readonly int        id;
+        public readonly Vector2Int cell;
+        public readonly WorldTheme biome;
+        public Landmark(int id, Vector2Int cell, WorldTheme biome) { this.id = id; this.cell = cell; this.biome = biome; }
+    }
+
+    private const int   SectorCount        = 4;
+    private const float CenterBiomeFrac    = 0.28f;
+    private const float BiomeWobble        = 0.35f;
+    private const int   LandmarksPerSector = 2;
+    private const int   LandmarkClear      = 3;
 
     public event System.Action<List<Vector2Int>> OnCellsChanged;
 
@@ -39,14 +70,17 @@ public class TerrainMap
     {
         MinX = minX; MinY = minY; VertsX = vertsX; VertsY = vertsY;
         bits = new byte[vertsX * vertsY];
+        soilBits = new byte[vertsX * vertsY];
+        biomeBits = new byte[vertsX * vertsY];
         worldMinX = -gridWidth / 2;  worldMaxX = worldMinX + gridWidth - 1;
         worldMinY = -gridHeight / 2; worldMaxY = worldMinY + gridHeight - 1;
     }
 
-    public static TerrainMap Generate(int gridWidth, int gridHeight, int marginCells, int seed, bool obstacles)
+    public static TerrainMap Generate(int gridWidth, int gridHeight, int marginCells, int seed, bool obstacles, WorldTheme start)
     {
         int minX = -gridWidth / 2 - marginCells, minY = -gridHeight / 2 - marginCells;
         var map = new TerrainMap(minX, minY, gridWidth + marginCells * 2 + 1, gridHeight + marginCells * 2 + 1, gridWidth, gridHeight);
+        map.PaintBiomes(seed, gridWidth, gridHeight, start);
 
         var rng = new System.Random(seed ^ 0x5EED7E);
         var o = new float[10];
@@ -83,6 +117,10 @@ public class TerrainMap
             map.bits[j * vx + i] = b;
         }
 
+        if (GameLaunchContext.LegacyWorld) map.PlaceSoilLegacy(seed, gridWidth, gridHeight);
+        else map.PlaceSoil(seed, gridWidth, gridHeight);
+        map.PlaceLandmarks(seed, gridWidth, gridHeight);
+
         if (obstacles)
         {
             map.RemoveSpecks();
@@ -118,6 +156,205 @@ public class TerrainMap
             f   *= 2.03f;
         }
         return v / sum;
+    }
+
+    // 가운데 원 = 시작 바이옴, 바깥은 네 갈래 (경계는 잡음으로 구불구불)
+    private void PaintBiomes(int seed, int gridWidth, int gridHeight, WorldTheme start)
+    {
+        var rng = new System.Random(seed ^ 0xB10E);
+        StartBiome = start;
+        sectorOffset = (float)(rng.NextDouble() * Mathf.PI * 2f);
+        var others = new List<WorldTheme>();
+        for (int i = 0; i < WorldThemeConfig.Count; i++)
+            if ((WorldTheme)i != start) others.Add((WorldTheme)i);
+        for (int i = others.Count - 1; i > 0; i--)
+        {
+            int k = rng.Next(i + 1);
+            (others[i], others[k]) = (others[k], others[i]);
+        }
+        sectorBiome[0] = start;
+        for (int i = 1; i < SectorCount; i++) sectorBiome[i] = others[(i - 1) % others.Count];
+
+        float half = Mathf.Min(gridWidth, gridHeight) * 0.5f;
+        float ox = (float)(rng.NextDouble() * 300.0), oy = (float)(rng.NextDouble() * 300.0);
+        for (int j = 0; j < VertsY; j++)
+        for (int i = 0; i < VertsX; i++)
+        {
+            float x = MinX + i, y = MinY + j;
+            float a = Mathf.Atan2(y, x);
+            float ring = half * CenterBiomeFrac * (0.85f + 0.3f * Mathf.PerlinNoise(ox + Mathf.Cos(a) * 1.7f, oy + Mathf.Sin(a) * 1.7f));
+            WorldTheme b;
+            if (x * x + y * y < ring * ring) b = start;
+            else
+            {
+                float warp = (Mathf.PerlinNoise(ox + x * 0.025f, oy + y * 0.025f) - 0.5f) * 2f * BiomeWobble;
+                b = sectorBiome[SectorOf(a + warp)];
+            }
+            biomeBits[j * VertsX + i] = (byte)b;
+        }
+    }
+
+    private int SectorOf(float angle)
+    {
+        float t = Mathf.Repeat(angle - sectorOffset, Mathf.PI * 2f) / (Mathf.PI * 2f / SectorCount);
+        return Mathf.Clamp((int)t, 0, SectorCount - 1);
+    }
+
+    private float SectorMidAngle(WorldTheme biome)
+    {
+        for (int s = 0; s < SectorCount; s++)
+            if (sectorBiome[s] == biome) return sectorOffset + (s + 0.5f) * Mathf.PI * 2f / SectorCount;
+        return sectorOffset;
+    }
+
+    // 바이옴 방향 (안내용)
+    public Vector2 BiomeDirection(WorldTheme biome)
+    {
+        float a = SectorMidAngle(biome);
+        return new Vector2(Mathf.Cos(a), Mathf.Sin(a));
+    }
+
+    public WorldTheme BiomeAtVertex(int vx, int vy) => TryIndex(vx, vy, out int idx) ? (WorldTheme)biomeBits[idx] : StartBiome;
+
+    // 칸 네 꼭짓점 중 많은 쪽
+    public WorldTheme BiomeAt(Vector2Int cell)
+    {
+        var a = BiomeAtVertex(cell.x, cell.y);
+        var b = BiomeAtVertex(cell.x + 1, cell.y);
+        var c = BiomeAtVertex(cell.x, cell.y + 1);
+        var d = BiomeAtVertex(cell.x + 1, cell.y + 1);
+        if (a == b || a == c || a == d) return a;
+        if (b == c || b == d) return b;
+        return c;
+    }
+
+    // 꼭짓점이 이 바이옴인 모서리 (TL 8 · TR 4 · BR 2 · BL 1)
+    public int BiomeConfig(WorldTheme biome, int cx, int cy)
+        => (BiomeAtVertex(cx, cy + 1) == biome ? 8 : 0) | (BiomeAtVertex(cx + 1, cy + 1) == biome ? 4 : 0) |
+           (BiomeAtVertex(cx + 1, cy) == biome ? 2 : 0) | (BiomeAtVertex(cx, cy) == biome ? 1 : 0);
+
+    // 바이옴 갈래마다 탐사 유적 둘
+    private void PlaceLandmarks(int seed, int gridWidth, int gridHeight)
+    {
+        var rng = new System.Random(seed ^ 0x1A4D);
+        float half = Mathf.Min(gridWidth, gridHeight) * 0.5f;
+        int id = 0;
+        for (int s = 0; s < SectorCount; s++)
+        {
+            float mid = sectorOffset + (s + 0.5f) * Mathf.PI * 2f / SectorCount;
+            for (int k = 0; k < LandmarksPerSector; k++, id++)
+            {
+                Vector2Int cell = default;
+                for (int attempt = 0; attempt < 30; attempt++)
+                {
+                    float angle = mid + (k == 0 ? -0.32f : 0.32f) + ((float)rng.NextDouble() - 0.5f) * 0.3f;
+                    float t = (float)rng.NextDouble();
+                    float dist = half * (k == 0 ? Mathf.Lerp(0.5f, 0.66f, t) : Mathf.Lerp(0.72f, 0.88f, t));
+                    cell = new Vector2Int(Mathf.RoundToInt(Mathf.Cos(angle) * dist), Mathf.RoundToInt(Mathf.Sin(angle) * dist));
+                    bool clear = true;
+                    foreach (var p in soilPatches)
+                        if ((p.center - cell).magnitude < p.radius + 6) { clear = false; break; }
+                    if (clear) break;
+                }
+                landmarks.Add(new Landmark(id, cell, BiomeAt(cell)));
+                for (int y = cell.y - LandmarkClear; y <= cell.y + LandmarkClear + 1; y++)
+                for (int x = cell.x - LandmarkClear; x <= cell.x + LandmarkClear + 1; x++)
+                    if (TryIndex(x, y, out int idx)) bits[idx] &= unchecked((byte)~ObstacleMask);
+            }
+        }
+    }
+
+    // 정화 개편 전 배치 (옛 세이브의 밭 자리 유지)
+    private void PlaceSoilLegacy(int seed, int gridWidth, int gridHeight)
+    {
+        var rng = new System.Random(seed ^ 0x50114D);
+        int half = Mathf.Min(gridWidth, gridHeight) / 2;
+        int radius = Mathf.Clamp(half / 10, SoilRadiusMin, SoilRadiusMax);
+        float baseAngle = (float)(rng.NextDouble() * Mathf.PI * 2f);
+        float nx = (float)(rng.NextDouble() * 200.0), ny = (float)(rng.NextDouble() * 200.0);
+        float step = Mathf.PI * 2f / 3f;
+        var kinds = new[] { SoilType.Starlight, SoilType.Spring, SoilType.Ember };
+        for (int ring = 0; ring < 2; ring++)
+        {
+            for (int i = kinds.Length - 1; i > 0; i--)
+            {
+                int k = rng.Next(i + 1);
+                (kinds[i], kinds[k]) = (kinds[k], kinds[i]);
+            }
+            for (int i = 0; i < kinds.Length; i++)
+            {
+                float angle = baseAngle + step * i + (ring == 1 ? step * 0.5f : 0f) + ((float)rng.NextDouble() - 0.5f) * SoilAngleJitter;
+                float t = (float)rng.NextDouble();
+                float dist = half * (ring == 0 ? Mathf.Lerp(0.38f, 0.52f, t) : Mathf.Lerp(0.68f, 0.85f, t));
+                var patch = new SoilPatch(kinds[i], new Vector2Int(Mathf.RoundToInt(Mathf.Cos(angle) * dist), Mathf.RoundToInt(Mathf.Sin(angle) * dist)), radius);
+                soilPatches.Add(patch);
+                PaintSoil(patch, nx, ny);
+            }
+        }
+    }
+
+    // 특산 토양은 제 바이옴 갈래 안쪽 · 바깥쪽에 하나씩
+    private void PlaceSoil(int seed, int gridWidth, int gridHeight)
+    {
+        var rng = new System.Random(seed ^ 0x50114D);
+        int half = Mathf.Min(gridWidth, gridHeight) / 2;
+        int radius = Mathf.Clamp(half / 10, SoilRadiusMin, SoilRadiusMax);
+        float nx = (float)(rng.NextDouble() * 200.0), ny = (float)(rng.NextDouble() * 200.0);
+        var kinds = new[] { SoilType.Starlight, SoilType.Spring, SoilType.Ember };
+
+        for (int ring = 0; ring < 2; ring++)
+        {
+            for (int i = 0; i < kinds.Length; i++)
+            {
+                float side = ring == 0 ? -0.22f : 0.22f;
+                float angle = SectorMidAngle(WorldThemeConfig.HomeOf(kinds[i])) + side + ((float)rng.NextDouble() - 0.5f) * SoilAngleJitter * 0.4f;
+                float t = (float)rng.NextDouble();
+                float dist = half * (ring == 0 ? Mathf.Lerp(0.38f, 0.52f, t) : Mathf.Lerp(0.68f, 0.85f, t));
+                var patch = new SoilPatch(kinds[i], new Vector2Int(Mathf.RoundToInt(Mathf.Cos(angle) * dist), Mathf.RoundToInt(Mathf.Sin(angle) * dist)), radius);
+                soilPatches.Add(patch);
+                PaintSoil(patch, nx, ny);
+            }
+        }
+    }
+
+    // 토양 자리는 협곡 · 대지를 걷어냄
+    private void PaintSoil(SoilPatch p, float nx, float ny)
+    {
+        int clear = p.radius + p.radius / 4 + 3;
+        for (int y = p.center.y - clear; y <= p.center.y + clear; y++)
+        for (int x = p.center.x - clear; x <= p.center.x + clear; x++)
+        {
+            if (!TryIndex(x, y, out int idx)) continue;
+            float d = Vector2.Distance(new Vector2(x, y), p.center);
+            if (d > clear) continue;
+            bits[idx] &= unchecked((byte)~ObstacleMask);
+            float wobble = 0.82f + 0.36f * Mathf.PerlinNoise(x * SoilWobbleScale + nx, y * SoilWobbleScale + ny);
+            if (d < p.radius * wobble && soilBits[idx] == 0) soilBits[idx] = (byte)p.type;
+        }
+    }
+
+    public SoilType SoilAtVertex(int vx, int vy) => TryIndex(vx, vy, out int idx) ? (SoilType)soilBits[idx] : SoilType.None;
+
+    // 꼭짓점 둘 이상 덮이면 그 토양
+    public SoilType SoilAtCell(Vector2Int cell)
+    {
+        int c = SoilConfig(cell.x, cell.y, out var soil);
+        int n = (c & 1) + ((c >> 1) & 1) + ((c >> 2) & 1) + ((c >> 3) & 1);
+        return n >= 2 ? soil : SoilType.None;
+    }
+
+    public int SoilConfig(int cx, int cy, out SoilType soil)
+    {
+        soil = SoilType.None;
+        int cfg = 0;
+        for (int k = 0; k < 4; k++)
+        {
+            var s = SoilAtVertex(cx + (k == 1 || k == 2 ? 1 : 0), cy + (k < 2 ? 1 : 0));
+            if (s == SoilType.None) continue;
+            soil = s;
+            cfg |= 8 >> k;
+        }
+        return cfg;
     }
 
     private void RemoveSpecks()
@@ -201,6 +438,16 @@ public class TerrainMap
         }
 
         EnsureConnected(changed);
+        if (changed.Count > 0) OnCellsChanged?.Invoke(changed);
+    }
+
+    // 데모: 사각 구역의 협곡 · 대지를 걷어냄
+    public void ClearRect(Vector2Int min, Vector2Int max)
+    {
+        var changed = new List<Vector2Int>();
+        for (int y = min.y; y <= max.y; y++)
+        for (int x = min.x; x <= max.x; x++)
+            CarveCell(x, y, changed);
         if (changed.Count > 0) OnCellsChanged?.Invoke(changed);
     }
 

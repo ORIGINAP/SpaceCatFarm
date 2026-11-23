@@ -35,6 +35,19 @@ public class NpcChatUI : MonoBehaviour
     private TMP_InputField input;
     private TextMeshProUGUI hint;
     private int            closedFrame = -1;
+    private GameObject     quickRow;
+
+    // 패드는 글자를 못 치니 자주 쓰는 부탁을 고르게
+    private static readonly string[] QuickAsks = { "따라와", "여기 있어", "밭에 씨앗 심어줘", "다 자란 작물 거둬줘", "지금 뭘 하면 좋아?" };
+
+    public static bool IsOpen => instance != null && instance.panel != null && instance.panel.activeSelf;
+
+    public static Transform Root => IsOpen ? instance.panel.transform : null;
+
+    public static void CloseIfOpen()
+    {
+        if (IsOpen) instance.Close();
+    }
     private Coroutine      popCo;
 
     private readonly Image[]           personaButtons = new Image[2];
@@ -83,15 +96,17 @@ public class NpcChatUI : MonoBehaviour
         if (!open)
         {
             if (Time.frameCount != closedFrame && !TextInputFocus.Active && !PlayerTileController.IsPauseMenuOpen() &&
-                GameInput.GetKeyDown(OpenKey))
+                (GameInput.GetKeyDown(OpenKey) || (InputManager.Instance != null && InputManager.Instance.CocoButton)))
                 Open();
         }
         else
         {
-            if (GameInput.GetKeyDown(KeyCode.Escape)) Close();
+            if (GameInput.GetKeyDown(KeyCode.Escape) || (Pad.Active && Pad.Down(PadButton.B))) Close();
             else if (!input.isFocused && !MobileMode.Active) input.ActivateInputField();
             hint.text = npc.IsThinking ? $"{AINpc.NpcName}가 생각 중..."
-                      : MobileMode.Active ? "키보드 완료: 보내기   뒤로 가기: 닫기" : "Enter: 보내기   Esc: 닫기";
+                      : Pad.Active ? "A: 부탁 고르기   B: 닫기   키보드로 직접 써도 돼요"
+                      : MobileMode.Active ? "키보드 완료: 보내기   뒤로 가기: 닫기"
+                      : "Enter: 보내기   Esc: 닫기";
             for (int i = 0; i < personaButtons.Length; i++)
             {
                 bool on = (int)npc.Persona == i + 1;
@@ -107,6 +122,7 @@ public class NpcChatUI : MonoBehaviour
     {
         panel.SetActive(true);
         input.text = "";
+        quickRow.SetActive(Pad.Active);
         input.ActivateInputField();
         TextInputFocus.Active = true;
         Sfx.Play(SfxId.UiOpen);
@@ -170,6 +186,7 @@ public class NpcChatUI : MonoBehaviour
         hrt.offsetMin = new Vector2(20f, 9f); hrt.offsetMax = new Vector2(-250f, 31f);
 
         BuildPersonaButtons();
+        BuildQuickAsks();
 
         input = boxGO.AddComponent<TMP_InputField>();
         input.textViewport   = art;
@@ -185,6 +202,31 @@ public class NpcChatUI : MonoBehaviour
         input.colors = colors;
 
         panel.SetActive(false);
+    }
+
+    private void BuildQuickAsks()
+    {
+        quickRow = new GameObject("QuickAsks", typeof(RectTransform));
+        quickRow.transform.SetParent(panel.transform, false);
+        var rt = (RectTransform)quickRow.transform;
+        rt.anchorMin = new Vector2(0f, 1f);
+        rt.anchorMax = new Vector2(1f, 1f);
+        rt.pivot     = new Vector2(0.5f, 0f);
+        rt.anchoredPosition = new Vector2(0f, 26f);
+        rt.sizeDelta = new Vector2(190f, 34f);
+        var hlg = quickRow.AddComponent<HorizontalLayoutGroup>();
+        hlg.spacing                = 6f;
+        hlg.childControlWidth      = true;
+        hlg.childControlHeight     = true;
+        hlg.childForceExpandWidth  = true;
+        hlg.childForceExpandHeight = true;
+        for (int i = 0; i < QuickAsks.Length; i++)
+        {
+            string ask = QuickAsks[i];
+            var btn = CuteUIKit.Button(quickRow.transform, ask, CuteUIKit.ButtonMint, () => OnSubmit(ask), -1f, 34f, 13f);
+            if (i == 0) btn.gameObject.AddComponent<GamepadDefault>();
+        }
+        quickRow.SetActive(false);
     }
 
     private void BuildPersonaButtons()

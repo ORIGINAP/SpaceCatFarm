@@ -60,6 +60,8 @@ public class GridManager : MonoBehaviour
         var cells = GetOccupiedCells(anchorPos, effW, effH);
 
         if (!CanPlaceCells(cells)) return null;
+        // 오염된 땅엔 못 지음 (로드 · 호스트 상태 적용은 그대로)
+        if (!SaveManager.IsLoading && !NetOps.Applying && !Purify.Allows(prefab, cells)) return null;
 
         Vector3 worldPos = GridToWorldCenter(anchorPos, effW, effH);
         GameObject obj   = Instantiate(prefab, worldPos, Quaternion.Euler(0f, 0f, -rotation));
@@ -90,6 +92,16 @@ public class GridManager : MonoBehaviour
 
     public bool CanPlaceAt(Vector2Int anchorPos, int effW, int effH)
         => CanPlaceCells(GetOccupiedCells(anchorPos, effW, effH));
+
+    // 정화까지 따짐
+    public bool CanPlaceAt(Vector2Int anchorPos, int effW, int effH, GameObject prefab)
+    {
+        var cells = GetOccupiedCells(anchorPos, effW, effH);
+        return CanPlaceCells(cells) && Purify.Allows(prefab, cells);
+    }
+
+    public bool IsPureFor(Vector2Int anchorPos, int effW, int effH, GameObject prefab)
+        => Purify.Allows(prefab, GetOccupiedCells(anchorPos, effW, effH));
 
     private bool CanPlaceCells(List<Vector2Int> cells)
     {
@@ -196,14 +208,14 @@ public class GridManager : MonoBehaviour
     {
         int dx = Mathf.Max(0, Mathf.Max(min.x - x, x - max.x));
         int dy = Mathf.Max(0, Mathf.Max(min.y - y, y - max.y));
-        return dx + dy;
+        return Mathf.Max(dx, dy);
     }
 
     public static int AreaDistance(Vector2Int aMin, Vector2Int aMax, Vector2Int bMin, Vector2Int bMax)
     {
         int dx = Mathf.Max(0, Mathf.Max(aMin.x - bMax.x, bMin.x - aMax.x));
         int dy = Mathf.Max(0, Mathf.Max(aMin.y - bMax.y, bMin.y - aMax.y));
-        return dx + dy;
+        return Mathf.Max(dx, dy);
     }
 
     public Vector2Int WorldToGrid(Vector3 worldPos)

@@ -55,10 +55,13 @@ public class ShuttleService : MonoBehaviour
 
     public static event Action OnAnyArrival;
 
+    public static event Action OnAutoDepart;
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetStatics()
     {
         OnAnyArrival = null;
+        OnAutoDepart = null;
         oreOf.Clear();
     }
 
@@ -332,18 +335,43 @@ public class ShuttleService : MonoBehaviour
 
     private void Depart(ShuttleSave s, Inventory bonusTo)
     {
-        CurrencyManager.Instance?.Add(s.reward);
+        long pay = Payout(s.reward);
+        CurrencyManager.Instance?.Add(pay);
+        int seats = TownLife.PaySeats(out long seatCost);
+        if (seats > 0) AddSeats(s, seats);
         var bonus = NetWorld.Item(s.bonusItem);
         if (bonusTo != null && bonus != null && s.bonusAmount > 0)
             bonusTo.AddItemOrDrop(bonus, s.bonusAmount, PlayerTileController.Instance != null ? PlayerTileController.Instance.transform.position : Vector3.zero);
 
         s.away     = true;
         s.tripTime = s.timer = TripTime();
-        NotificationUI.Instance?.Show($"짐을 다 실었어요! 셔틀이 고향별로 떠나요 — 짐값 +{CurrencyManager.Format(s.reward)}코인" +
+        int pct = TownLife.Percent(TownBonus);
+        NotificationUI.Instance?.Show($"짐을 다 실었어요! 셔틀이 고향별로 떠나요 — 짐값 +{CurrencyManager.Format(pay)}코인" +
+                                      (pct > 0 ? $" (마을 보너스 +{pct}%)" : "") +
+                                      (seats > 0 ? $" · 이주 지원 -{CurrencyManager.Format(seatCost)}코인, 고양이 +{seats}마리" : "") +
                                       (bonus != null && s.bonusAmount > 0 ? $" · 덤 {bonus.itemName} ×{s.bonusAmount}" : ""), NotificationUI.GoodNewsColor);
-        NetHost.NoticeAll($"셔틀이 고향별로 떠났어요 — 짐값 +{CurrencyManager.Format(s.reward)}코인");
+        NetHost.NoticeAll($"셔틀이 고향별로 떠났어요 — 짐값 +{CurrencyManager.Format(pay)}코인");
         OnChanged?.Invoke();
     }
+
+    // 지원 좌석에 탈 고양이 (가족 이름은 그대로)
+    private void AddSeats(ShuttleSave s, int n)
+    {
+        var rng   = new System.Random(unchecked(Environment.TickCount * 17 + s.id));
+        var avoid = RecentNames();
+        for (int i = 0; i < n; i++)
+        {
+            string name = Names[rng.Next(Names.Length)];
+            for (int t = 0; t < 12 && avoid.Contains(name); t++) name = Names[rng.Next(Names.Length)];
+            avoid.Add(name);
+            s.cats.Add(new CatLook { name = name, color = rng.Next(9), accessory = rng.Next(8) });
+        }
+    }
+
+    // 마을 매력 · 축제 보너스 (떠날 때 얹음)
+    public static float TownBonus => TownLife.CharmBonus + TownLife.PayBonus;
+
+    public static long Payout(long reward) => Math.Max(10, (long)Math.Round(reward * (1f + TownBonus) / 10.0) * 10);
 
     private float TripTime()
     {
@@ -421,7 +449,7 @@ public class ShuttleService : MonoBehaviour
             foreach (var line in s.cargo)
             {
                 var item = NetWorld.Item(line.item);
-                if (item == null) continue;
+                if (item == null || QuestManager.Reserved(item)) continue;
                 for (int i = 0; i < pad.Links.Count && line.Missing > 0; i++)
                 {
                     if (pad.Links[i] is not ItemStorage storage) continue;
@@ -437,7 +465,9 @@ public class ShuttleService : MonoBehaviour
             }
             if (!pulled) continue;
             any = true;
-            if (IsFull(s)) Depart(s, Inventory.Instance);
+            if (!IsFull(s)) continue;
+            Depart(s, Inventory.Instance);
+            OnAutoDepart?.Invoke();
         }
         return any;
     }
@@ -452,7 +482,7 @@ public class ShuttleService : MonoBehaviour
     };
 
     // 문명 단계별 짐 크기, 밭 일 단위
-    private static readonly int[] UnitsByLevel = { 0, 8, 24, 45, 70, 100, 140, 160 };
+    private static readonly int[] UnitsByLevel = { 0, 8, 24, 45, 130, 330, 560, 760 };
     private const float UnitSeconds = 20f;
     private const float KitchenSecondsPerUnit = 10f;
 
@@ -499,10 +529,15 @@ public class ShuttleService : MonoBehaviour
         float units = UnitsByLevel[level] * size;
         double roll = rng.NextDouble();
         string kind;
+        FarmingItemData taste = null;
         var taken = new List<FarmingItemData>();
         foreach (var other in shuttles)
             if (other != s && other.cargo != null)
                 foreach (var l in other.cargo) { var it = NetWorld.Item(l.item); if (it != null) taken.Add(it); }
+        // 이주선 비축 물건은 짐으로 안 받음
+        if (QuestManager.Instance != null)
+            foreach (var o in QuestManager.Instance.ActiveObjectives)
+                if (o.type == QuestObjectiveType.Stockpile && o.targetItem != null) taken.Add(o.targetItem);
         if (level >= 3 && goldens.Count > 0 && roll < 0.06)
         {
             var g = goldens[rng.Next(goldens.Count)];
@@ -535,7 +570,11 @@ public class ShuttleService : MonoBehaviour
                 used.Add(pick);
                 own.Add(pick);
                 anyDish |= dishes.Contains(pick);
-                s.cargo.Add(FarmLine(pick, units / lines));
+                var line = FarmLine(pick, units / lines);
+                int cap = TasteAmount(pick);
+                if (cap != int.MaxValue && taste == null) taste = pick;
+                line.amount = Mathf.Min(line.amount, cap);
+                s.cargo.Add(line);
             }
             kind = anyDish ? "dish" : "crop";
         }
@@ -558,7 +597,18 @@ public class ShuttleService : MonoBehaviour
 
         if (rng.NextDouble() < 0.35) PickBonus(s, level, rng);
         MakeFamily(s, CatsByLevel[level] + (rng.NextDouble() < 0.5 ? 1 : 0) + HousingCats, rng, RecentNames());
-        s.message = Message(s, kind, rng);
+        s.message = taste != null ? TasteMessage(taste, rng) : Message(s, kind, rng);
+    }
+
+    private static string TasteMessage(FarmingItemData item, System.Random rng)
+    {
+        string name = item.itemName;
+        string[] pool =
+        {
+            $"고향에선 {ItemCellUI.Eul(name)} 처음 본다냥! 구경하게 조금만 보내 달라냥~",
+            $"{ItemCellUI.Ga(name)} 뭔지 궁금하다냥! 우선 조금만 보내 달라냥",
+        };
+        return pool[rng.Next(pool.Length)];
     }
 
     private static bool FirstRequest(ShuttleSave s)
@@ -613,7 +663,7 @@ public class ShuttleService : MonoBehaviour
     private const int MaxAmount         = 60;
     private const float MaterialValueShare = 0.4f;
     private const int   MaxMaterialAmount  = 12;
-    private const int   MaxFarmAmount      = 80;
+    private const int   MaxFarmAmount      = 200;
 
     private readonly Dictionary<FarmingItemData, float>           unitCache = new();
     private readonly Dictionary<FarmingItemData, int>             unlockCache = new();
@@ -688,6 +738,23 @@ public class ShuttleService : MonoBehaviour
     }
 
     private float Recency(FarmingItemData item, int level) => 1 + Mathf.Max(0, 3 - (level - UnlockLevel(item)));
+
+    // 처음 보는 작물과 요리는 맛보기만
+    private const int TasteCrops   = 10;
+    private const int TasteBatches = 2;
+
+    private int TasteAmount(FarmingItemData item)
+    {
+        if (item == null) return int.MaxValue;
+        if (!dishes.Contains(item)) return HarvestLog.Contains(item) ? int.MaxValue : TasteCrops;
+        if (Codex.HasDish(item)) return int.MaxValue;
+        int perCook = 1;
+        var cm = CraftingManager.Instance;
+        if (cm != null)
+            foreach (var r in cm.Recipes)
+                if (r != null && r.IsKitchenRecipe && r.outputItem == item) { perCook = Mathf.Max(1, r.outputAmount); break; }
+        return TasteBatches * perCook;
+    }
 
     private CargoLine FarmLine(FarmingItemData item, float units)
     {
@@ -866,8 +933,9 @@ public class ShuttleService : MonoBehaviour
         var item = PadItem;
         var spot = FindPadSpot();
         if (gm == null || item == null || item.tilePrefab == null || spot == null) return;
-        gm.PlaceTile(spot.Value, item.tilePrefab, item.tileWidth, item.tileHeight, 0, item);
-        if (Instance != null) Instance.padGranted = true;
+        // 실패하면 EnsurePad가 다시 시도
+        if (gm.PlaceTile(spot.Value, item.tilePrefab, item.tileWidth, item.tileHeight, 0, item) != null && Instance != null)
+            Instance.padGranted = true;
     }
 
     private static Vector2Int? FindPadSpot()

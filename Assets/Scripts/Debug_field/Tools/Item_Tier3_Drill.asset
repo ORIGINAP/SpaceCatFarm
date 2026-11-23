@@ -29,7 +29,7 @@ MonoBehaviour:
   fuelValue: 20
   isCropProduct: 0
   toolGrade: 3
-  miningPower: 10
-  miningSpeed: 10
+  miningPower: 8
+  miningSpeed: 2
   harvestRadius: 0
   equipBonuses: []

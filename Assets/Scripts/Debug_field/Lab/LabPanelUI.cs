@@ -26,6 +26,8 @@ public class LabPanelUI : MonoBehaviour
     private CanvasGroup   panelCG;
     private bool          isOpen, dirty;
     private Coroutine     animCo;
+    private TextMeshProUGUI tabKey;
+    private bool          tabKeyForPad;
     private float         nextRefresh;
 
     private sealed class Card
@@ -75,8 +77,14 @@ public class LabPanelUI : MonoBehaviour
 
     private void Update()
     {
+        if (tabKey != null && tabKeyForPad != Pad.Active)
+        {
+            tabKeyForPad = Pad.Active;
+            tabKey.text  = tabKeyForPad ? "↓꾹" : "L";
+        }
         if (isOpen && EscapeRouter.TryConsume(EscapeRouter.CancelPressed)) SetOpen(false);
-        else if (!TextInputFocus.Active && !PlayerTileController.IsPauseMenuOpen() && GameInput.GetKeyDown(KeyCode.L)) SetOpen(!isOpen);
+        else if (!TextInputFocus.Active && !PlayerTileController.IsPauseMenuOpen()
+                 && (GameInput.GetKeyDown(KeyCode.L) || (InputManager.Instance != null && InputManager.Instance.JourneyButton))) SetOpen(!isOpen);
 
         if (isOpen && (dirty || Time.unscaledTime >= nextRefresh))
         {
@@ -126,7 +134,7 @@ public class LabPanelUI : MonoBehaviour
         ttr.anchorMax = Vector2.one;
         ttr.offsetMin = new Vector2(6f, 22f);
         ttr.offsetMax = new Vector2(0f, -6f);
-        var key = CuteUIKit.Pill(tab.transform, "L", CuteUIKit.Hex(0xFFFFFF, 0.9f), TabColor, 9f, 7, new RectOffset(5, 5, 1, 1), out _, fitSelf: true);
+        var key = CuteUIKit.Pill(tab.transform, "L", CuteUIKit.Hex(0xFFFFFF, 0.9f), TabColor, 9f, 7, new RectOffset(5, 5, 1, 1), out tabKey, fitSelf: true);
         key.anchorMin = key.anchorMax = key.pivot = new Vector2(0.5f, 0f);
         key.anchoredPosition = new Vector2(3f, 8f);
 

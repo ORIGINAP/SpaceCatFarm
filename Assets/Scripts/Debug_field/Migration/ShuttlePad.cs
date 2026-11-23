@@ -37,7 +37,7 @@ public class ShuttlePad : TileItem
     public ShuttleSave Shuttle => ShuttleService.Instance != null ? ShuttleService.Instance.ShuttleAt(GridPosition) : null;
 
     public override string AbilityText =>
-        "셔틀을 클릭하면 짐이 실리고, 다 실으면 고향별에 다녀와 고양이 가족을 태워 와요. " +
+        "셔틀을 누르면 짐이 실리고, 다 실으면 고향별에 다녀와 고양이 가족을 태워 와요. " +
         $"통신탑마다 셔틀 한 척 더 (최대 {ShuttleService.MaxShuttles}척)";
 
     private void Start()

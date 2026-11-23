@@ -11,7 +11,7 @@ public static class LinkRules
 
     public static bool UsesStorage(TileItem t)
         => t is ResourceExtractor || t is AutoHarvester || t is AutoSeeder || t is AutoSeller || t is Smelter || t is AutoFuelPipe
-           || t is CatKitchen || t is Composter || t is ShuttlePad;
+           || t is CatKitchen || t is Composter || t is ShuttlePad || t is CargoRail;
 
     public static bool CanLink(TileItem a, TileItem b, out string reason, bool checkDistance = true)
     {
@@ -31,6 +31,7 @@ public static class LinkRules
     {
         if (a is ItemStorage)  return UsesStorage(b) || IsFuelSink(b);
         if (a is AutoFuelPipe) return b is AutoFuelPipe || IsFuelSink(b);
+        if (a is CargoRail)    return b is CargoRail;
         return false;
     }
 
@@ -38,6 +39,7 @@ public static class LinkRules
     {
         ItemStorage  => "창고는 자동화 설비(제련소 · 주방 · 수확기 · 착륙장 등)와 이을 수 있어요",
         AutoFuelPipe => "파이프는 창고 · 파이프 · 중앙 발전소와 이을 수 있어요",
+        CargoRail    => "화물 레일은 창고 · 다른 기둥과 이을 수 있어요",
         Generator    => "발전소는 창고 · 연료전송파이프와 이을 수 있어요",
         _            => "창고와 이어 주세요",
     };
@@ -46,7 +48,7 @@ public static class LinkRules
     {
         int dx = Mathf.Max(0, Mathf.Max(a.FootprintMin.x - b.FootprintMax.x, b.FootprintMin.x - a.FootprintMax.x));
         int dy = Mathf.Max(0, Mathf.Max(a.FootprintMin.y - b.FootprintMax.y, b.FootprintMin.y - a.FootprintMax.y));
-        return Mathf.Sqrt(dx * dx + dy * dy);
+        return Mathf.Max(dx, dy);
     }
 
     public static string NameOf(TileItem t)
@@ -69,6 +71,7 @@ public static class LinkRules
         AutoFuelPipe      => "발전소 연료가 떨어지면 이어 준 창고의 연료를 보내요",
         Generator         => "연료가 떨어지면 이어 준 창고의 연료로 채워요",
         ShuttlePad        => "이어 준 창고에서 셔틀 짐을 알아서 실어요",
+        CargoRail         => "이어진 창고의 물건을 본진 창고로 실어 날라요",
         _                 => "",
     };
 

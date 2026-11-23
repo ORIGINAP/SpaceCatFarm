@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 357b9bc829fb10d49b9067fa176729d1, type: 3}
+  m_Name: Recipe_AutoHarvester_T3
+  m_EditorClassIdentifier: Assembly-CSharp::CraftingRecipe
+  recipeName: "\uBA54\uAC00 \uC790\uB3D9\uC218\uD655\uAE30"
+  description: "\uB808\uC774\uB354\uB85C \uB113\uC740 \uB4E4\uD310\uC744 \uD6D1\uC5B4
+    1\uCD08\uB9C8\uB2E4 \uB2E4 \uC790\uB780 \uBC2D 24\uCE78\uC744 \uD55C\uAEBC\uBC88\uC5D0
+    \uAC70\uB46C\uC694. 27\xD727\uCE78 \uBC94\uC704."
+  tier: 2
+  station: 0
+  requiredCoreLevel: 5
+  ingredients:
+  - item: {fileID: 11400000, guid: 07926f76c06948aaa82ef0feaf3666e7, type: 2}
+    amount: 1
+  - item: {fileID: 11400000, guid: ce1ba0771eaceb441820228ce700d6da, type: 2}
+    amount: 2
+  - item: {fileID: 11400000, guid: aea2542efd9d72d46827de540616412b, type: 2}
+    amount: 2
+  outputItem: {fileID: 11400000, guid: 2fdcdfe66153a3843aa050b9f3f70879, type: 2}
+  outputAmount: 1
+  craftSeconds: 0

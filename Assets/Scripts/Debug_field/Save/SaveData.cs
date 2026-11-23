@@ -5,7 +5,10 @@ using System.Collections.Generic;
 public class SaveData
 {
     // 세이브 포맷 버전
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
+
+    // 4: 바이옴 · 정화 (이전 월드는 옛 토양 배치 · 정화 없음)
+    public const int FirstPurifyVersion = 4;
 
     public const int FirstCentralPlantVersion = 2;
 
@@ -22,6 +25,9 @@ public class SaveData
     public int worldTheme;
 
     public int worldSeed;
+
+    // 정화 개편 전에 만든 월드
+    public bool legacyWorld;
 
     public int gridWidth, gridHeight;
 
@@ -72,6 +78,15 @@ public class SaveData
     public List<string> codexGolden = new();
     public List<string> codexDishes = new();
     public int          codexMilestones;
+
+    // 탐험: 찾은 바이옴 비트 · 연 유적 번호
+    public int       biomesFound;
+    public List<int> landmarksOpened = new();
+
+    // 마을 축제 끝나는 게임 분 · 연 날
+    public int festivalEnd = -1;
+    public int festivalDay = -1;
+    public int extraSeats;
 
     public List<GuestSave> guests = new();
 }

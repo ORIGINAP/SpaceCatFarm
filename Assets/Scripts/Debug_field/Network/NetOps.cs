@@ -16,6 +16,7 @@ public enum NetOpType
     ShopBuy, ShopSell, Research, Quest,
     ShuttleLoad, ShuttleReroll,
     ResidentTalk, ResidentGift,
+    Festival, ShuttleSeats,
 }
 
 [Serializable]

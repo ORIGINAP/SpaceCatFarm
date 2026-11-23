@@ -13,16 +13,14 @@ public class QuestUI : MonoBehaviour
     [Header("폰트")]
     [SerializeField] private TMP_FontAsset fontAsset;
 
-    private const float PanelWidth = 400f;
-    private const int   CardRadius = 18;
+    private const float PanelWidth = 380f;
+    private const int   CardRadius = 16;
+    private const float ChapterHold = 4.5f;
+    private const float DoneHold    = 3f;
     private static readonly Color TextColor         = CuteUIKit.Cocoa;
     private static readonly Color DoneTextColor     = CuteUIKit.MintText;
     private static readonly Color ProgressColor     = CuteUIKit.Lighter(CuteUIKit.MintText, 0.3f);
     private static readonly Color ProgressDoneColor = CuteUIKit.MintText;
-    private static readonly Color BlinkFillColor    = CuteUIKit.MintTag;
-    private static readonly Color BlinkBorderColor  = CuteUIKit.ButtonMint;
-    private static readonly Color CompleteFlashColor = CuteUIKit.Strawberry;
-    private static readonly Color CurrentRowFill    = CuteUIKit.Lighter(CuteUIKit.PinkSoft, 0.35f);
     private static readonly Color DoneRowFill       = CuteUIKit.Lighter(CuteUIKit.MintTag, 0.45f);
 
     private static readonly Color QuestNameBaseColor = CuteUIKit.Cocoa;
@@ -45,13 +43,10 @@ public class QuestUI : MonoBehaviour
     private System.Action   shortcutAction;
     private TextMeshProUGUI toggleBtnText;
 
-    private Coroutine completionCo;
-    private Coroutine popInCo;
-    private Coroutine blinkCo;
+    private Coroutine glowCo;
+    private Coroutine popCo;
 
     private readonly List<ObjectiveRow> rows = new();
-    private readonly List<bool> rowDone = new();
-    private QuestDefinition rowsQuest;
 
     private class ObjectiveRow
     {
@@ -70,10 +65,16 @@ public class QuestUI : MonoBehaviour
     private RectTransform cardRT;
     private CanvasGroup   cardCG;
     private Transform     cardBody;
-    private enum CardKind { Started, Completed, Chapter }
-    private readonly Queue<(CardKind kind, QuestDefinition def)> cardQueue = new();
+    private readonly Queue<QuestDefinition> chapterQueue = new();
     private Coroutine     cardCo;
     private bool          skipCard;
+
+    private RectTransform   doneRT;
+    private CanvasGroup     doneCG;
+    private TextMeshProUGUI doneText;
+    private Coroutine       doneCo;
+    private int             doneCount, doneCoins;
+    private readonly List<QuestReward> doneItems = new();
 
     private void Awake()
     {
@@ -108,8 +109,8 @@ public class QuestUI : MonoBehaviour
         RefreshUI();
 
         var qm = QuestManager.Instance;
-        if (GameLaunchContext.IsNewGame && qm.CurrentQuest != null && qm.CurrentQuestIndex == 0 && cardQueue.Count == 0)
-            EnqueueStart(qm.CurrentQuest);
+        if (GameLaunchContext.IsNewGame && qm.CurrentQuest != null && qm.CurrentQuestIndex == 0 && chapterQueue.Count == 0)
+            EnqueueChapter(qm.CurrentQuest);
     }
 
     private void OnDestroy()
@@ -124,8 +125,17 @@ public class QuestUI : MonoBehaviour
         QuestManager.Instance.OnAllQuestsDone  -= OnAllDone;
     }
 
+    private bool labelsForPad;
+
     private void Update()
     {
+        if (labelsForPad != Pad.Active)
+        {
+            labelsForPad = Pad.Active;
+            if (toggleBtnText != null) toggleBtnText.text = ToggleLabel(logOpen);
+            RefreshHint();
+        }
+
         if (cardCo != null && cardCG != null && cardCG.alpha > 0.9f &&
             (GameInput.GetMouseButtonDown(0) || GameInput.GetMouseButtonDown(1) || (Pad.Active && Pad.Down(PadButton.A))))
             skipCard = true;
@@ -133,22 +143,20 @@ public class QuestUI : MonoBehaviour
 
     private void OnQuestStarted(QuestDefinition def)
     {
-        if (popInCo != null) StopCoroutine(popInCo);
-        popInCo = StartCoroutine(PopIn());
         RefreshUI();
         if (logOpen) RefreshLog();
-        EnqueueStart(def);
+        if (glowCo != null) StopCoroutine(glowCo);
+        glowCo = StartCoroutine(NewQuestGlow());
+        EnqueueChapter(def);
     }
 
     private void OnQuestCompleted(QuestDefinition def)
     {
-        if (completionCo != null)
-        {
-            StopCoroutine(completionCo);
-            questNameText.color = QuestNameBaseColor;
-        }
-        completionCo = StartCoroutine(CompletionFlash());
-        EnqueueCard(CardKind.Completed, def);
+        ShowDone(def);
+        // 달성하면 패널이 통 튐
+        if (popCo != null) StopCoroutine(popCo);
+        panelRT.localScale = Vector3.one * 0.85f;
+        popCo = StartCoroutine(CuteUIKit.ScaleTo(panelRT, 1f, 0.3f));
     }
 
     private void OnAllDone()
@@ -162,9 +170,6 @@ public class QuestUI : MonoBehaviour
     {
         RefreshUI();
         if (logOpen) RefreshLog();
-
-        if (blinkCo != null) StopCoroutine(blinkCo);
-        blinkCo = StartCoroutine(UpdateBlink());
     }
 
     private void RefreshUI()
@@ -185,9 +190,6 @@ public class QuestUI : MonoBehaviour
         questNameText.text = quest.questName;
 
         int count = objectives?.Count ?? 0;
-        bool sameQuest = rowsQuest == quest;
-        rowsQuest = quest;
-        if (!sameQuest) rowDone.Clear();
         while (rows.Count < count) AddRow();
         while (rows.Count > count) RemoveLastRow();
 
@@ -203,23 +205,13 @@ public class QuestUI : MonoBehaviour
             row.label.text  = obj.IsComplete ? $"<s>{obj.GetLabel()}</s>" : current ? $"<b>{obj.GetLabel()}</b>" : obj.GetLabel();
             row.count.text  = $"{obj.currentAmount}/{obj.targetAmount}";
             row.label.color = row.count.color = obj.IsComplete ? DoneTextColor : TextColor;
-            row.bg.color    = obj.IsComplete ? DoneRowFill : current ? CurrentRowFill : Color.clear;
+            row.bg.color    = obj.IsComplete ? DoneRowFill : Color.clear;
             var sprite = QuestIcons.For(obj);
             row.icon.sprite  = sprite;
             row.icon.enabled = sprite != null;
             row.icon.color   = obj.IsComplete ? new Color(1f, 1f, 1f, 0.55f) : Color.white;
             CuteUIKit.SetBar(row.fill.rectTransform, ratio);
             row.fill.color = obj.IsComplete ? ProgressDoneColor : ProgressColor;
-
-            bool was = i < rowDone.Count && rowDone[i];
-            if (sameQuest && obj.IsComplete && !was && isActiveAndEnabled)
-            {
-                CuteUIKit.SparkleBurst(this, (RectTransform)row.root.transform, CuteUIKit.MintText, 10, 70f);
-                StartCoroutine(CuteUIKit.ScaleTo(row.root.transform, 1f, 0.25f));
-                row.root.transform.localScale = Vector3.one * 1.08f;
-            }
-            while (rowDone.Count <= i) rowDone.Add(false);
-            rowDone[i] = obj.IsComplete;
         }
 
         RefreshHint();
@@ -239,7 +231,8 @@ public class QuestUI : MonoBehaviour
         chapterText.text = $"{qm.CurrentChapterIndex + 1}장 · {chapter.title}";
         stepText.transform.parent.gameObject.SetActive(true);
         stepText.text = $"{qm.StepInChapter}/{qm.StepsInChapter}";
-        goalText.gameObject.SetActive(!string.IsNullOrEmpty(chapter.goal));
+        // 챕터 목표는 자세히 펼쳤을 때만
+        goalText.gameObject.SetActive(logOpen && !string.IsNullOrEmpty(chapter.goal));
         goalText.text = $"목표 · {chapter.goal}";
     }
 
@@ -251,12 +244,13 @@ public class QuestUI : MonoBehaviour
         string text = !string.IsNullOrEmpty(guide.action) ? guide.action : quest != null ? quest.HintText : "";
         hintRow.SetActive(quest != null && !string.IsNullOrEmpty(text));
         hintText.text = text;
-        bool why = quest != null && !string.IsNullOrEmpty(guide.why);
+        bool why = logOpen && quest != null && !string.IsNullOrEmpty(guide.why);
         whyText.gameObject.SetActive(why);
         if (why) whyText.text = $"<color=#{ColorUtility.ToHtmlStringRGB(CuteUIKit.Strawberry)}>다음:</color> {guide.why}";
 
         shortcutAction = quest != null ? guide.shortcut : null;
-        shortcutBtn.gameObject.SetActive(shortcutAction != null);
+        // 패드는 전용 버튼으로 바로 염
+        shortcutBtn.gameObject.SetActive(shortcutAction != null && !Pad.Active);
         if (shortcutAction != null) shortcutText.text = guide.shortcutLabel;
 
         Canvas.ForceUpdateCanvases();
@@ -273,12 +267,12 @@ public class QuestUI : MonoBehaviour
         logSectionGO.SetActive(open);
         toggleBtnText.text = ToggleLabel(open);
         if (open) RefreshLog();
-
-        Canvas.ForceUpdateCanvases();
-        LayoutRebuilder.ForceRebuildLayoutImmediate(panelRT);
+        RefreshChapter();
+        RefreshHint();
     }
 
-    private static string ToggleLabel(bool open) => open ? "자세히 접기" : "자세히 · 보상 보기";
+    private static string ToggleLabel(bool open)
+        => (Pad.Active ? "↓ " : "") + (open ? "접기" : "자세히");
 
     private void RefreshLog()
     {
@@ -356,69 +350,43 @@ public class QuestUI : MonoBehaviour
                 item != null ? TextColor : CuteUIKit.AmberText, FontStyles.Bold).name = "Amount";
     }
 
-    private void EnqueueStart(QuestDefinition def)
+    // 평소 퀘스트는 패널에서만 바뀌고, 큰 카드는 장이 시작될 때만
+    private void EnqueueChapter(QuestDefinition def)
     {
         var chain = QuestChain.Load();
-        if (chain != null && chain.ChapterOf(def, out int step) >= 0 && step == 0) EnqueueCard(CardKind.Chapter, def);
-        EnqueueCard(CardKind.Started, def);
-    }
-
-    private void EnqueueCard(CardKind kind, QuestDefinition def)
-    {
-        if (def == null) return;
+        if (def == null || chain == null || chain.ChapterOf(def, out int step) < 0 || step != 0) return;
         if (cardRT == null) BuildCard();
-        cardQueue.Enqueue((kind, def));
-        if (cardCo == null) cardCo = StartCoroutine(CardLoop());
+        chapterQueue.Enqueue(def);
+        if (cardCo == null) cardCo = StartCoroutine(ChapterLoop());
     }
 
-    private IEnumerator CardLoop()
+    private IEnumerator ChapterLoop()
     {
         yield return null;
-        while (cardQueue.Count > 0)
+        while (chapterQueue.Count > 0)
         {
             while (CardBlocked) yield return null;
 
-            var (kind, def) = cardQueue.Dequeue();
-            bool started = kind == CardKind.Started;
-            // 이미 지나간 카드는 건너뜀
-            if (kind != CardKind.Completed && QuestManager.Instance != null && QuestManager.Instance.CurrentQuest != def) continue;
-            // 연속 완료 카드는 한 장으로
-            List<QuestDefinition> batch = null;
-            if (kind == CardKind.Completed)
-            {
-                var rest = new List<(CardKind kind, QuestDefinition def)>();
-                while (cardQueue.Count > 0)
-                {
-                    var next = cardQueue.Dequeue();
-                    if (next.kind == CardKind.Completed) { batch ??= new List<QuestDefinition> { def }; batch.Add(next.def); }
-                    else if (QuestManager.Instance == null || QuestManager.Instance.CurrentQuest == next.def) rest.Add(next);
-                }
-                foreach (var r in rest) cardQueue.Enqueue(r);
-            }
-            bool hurry = kind == CardKind.Completed && cardQueue.Count > 0;
-            cardRT.sizeDelta = new Vector2(kind == CardKind.Chapter ? 600f : 520f, 0f);
-            if (kind == CardKind.Chapter) FillChapterCard(def);
-            else if (batch != null) FillCompletedBatch(batch);
-            else FillCard(started, def);
+            var def = chapterQueue.Dequeue();
+            // 이미 지나간 장은 건너뜀
+            if (QuestManager.Instance != null && QuestManager.Instance.CurrentQuest != def) continue;
 
+            cardRT.sizeDelta = new Vector2(600f, 0f);
+            FillChapterCard(def);
             cardRT.gameObject.SetActive(true);
             cardRT.anchoredPosition = CardHome;
             cardRT.localScale = Vector3.one;
             skipCard = false;
-            if (kind == CardKind.Completed) CuteUIKit.SparkleBurst(this, cardRT, CuteUIKit.Butter, 16, 140f);
-            if (kind == CardKind.Chapter)   CuteUIKit.SparkleBurst(this, cardRT, CuteUIKit.Strawberry, 22, 220f);
-            Sfx.Play(kind == CardKind.Completed ? SfxId.QuestComplete : SfxId.UiOpen, kind == CardKind.Completed ? 0.5f : 0.8f);
+            Sfx.Play(SfxId.UiOpen, 0.8f);
             yield return CuteUIKit.PopIn(cardRT, cardCG, 0.3f);
 
-            float hold = kind == CardKind.Chapter ? 5.5f : started ? 4.2f : batch != null ? 2.8f : hurry ? 1.4f : 2.2f;
-            for (float t = 0f; t < hold && !(skipCard && t > 0.35f); t += Time.unscaledDeltaTime)
+            for (float t = 0f; t < ChapterHold && !(skipCard && t > 0.35f); t += Time.unscaledDeltaTime)
             {
                 if (LevelUpUI.IsOpen || PlayerTileController.IsAnyUIOpen()) break;
                 yield return null;
             }
 
-            if (started) yield return FlyToPanel();
-            else yield return CuteUIKit.PopOut(cardRT, cardCG, 0.18f);
+            yield return CuteUIKit.PopOut(cardRT, cardCG, 0.18f);
             cardRT.gameObject.SetActive(false);
         }
         cardCo = null;
@@ -428,99 +396,54 @@ public class QuestUI : MonoBehaviour
 
     private static bool CardBlocked => TutorialUI.IsActive || LevelUpUI.IsOpen || PlayerTileController.IsAnyUIOpen();
 
-    private IEnumerator FlyToPanel()
+    private void ShowDone(QuestDefinition def)
     {
-        var canvasRT = (RectTransform)cardRT.parent;
-        Vector3[] corners = new Vector3[4];
-        panelRT.GetWorldCorners(corners);
-        Vector2 target = CardHome;
-        Vector2 screen = (corners[0] + corners[2]) * 0.5f;
-        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRT, screen, null, out var local))
-            target = local + new Vector2(0f, canvasRT.rect.height * 0.5f);
+        // 연달아 끝나면 한 줄로 합침
+        if (doneCo != null) StopCoroutine(doneCo);
+        else { doneCount = doneCoins = 0; doneItems.Clear(); }
 
-        Vector2 from = cardRT.anchoredPosition;
-        const float dur = 0.42f;
-        for (float t = 0f; t < dur; t += Time.unscaledDeltaTime)
+        doneCount++;
+        doneCoins += def.rewardCoins;
+        foreach (var r in def.rewards)
         {
-            float k = Mathf.SmoothStep(0f, 1f, t / dur);
-            cardRT.anchoredPosition = Vector2.Lerp(from, target, k);
-            cardRT.localScale = Vector3.one * Mathf.Lerp(1f, 0.3f, k);
-            cardCG.alpha = 1f - k * k;
-            yield return null;
+            if (r.item == null) continue;
+            var same = doneItems.Find(x => x.item == r.item);
+            if (same != null) same.amount += r.amount;
+            else doneItems.Add(new QuestReward { item = r.item, amount = r.amount });
         }
-        cardCG.alpha = 0f;
-        if (popInCo != null) StopCoroutine(popInCo);
-        popInCo = StartCoroutine(PopIn());
+
+        doneText.text = doneCount > 1 ? $"퀘스트 {doneCount}개 완료!" : $"{def.questName} 완료!";
+        for (int i = doneRT.childCount - 1; i >= 0; i--)
+        {
+            var c = doneRT.GetChild(i).gameObject;
+            if (c == doneText.gameObject) continue;
+            c.SetActive(false);
+            Destroy(c);
+        }
+        foreach (var r in doneItems) BuildRewardChip(doneRT, r.item, r.amount, 20f);
+        if (doneCoins > 0) BuildRewardChip(doneRT, null, doneCoins, 20f);
+
+        doneCo = StartCoroutine(DoneRoutine());
     }
 
-    private void FillCard(bool started, QuestDefinition def)
+    private IEnumerator DoneRoutine()
     {
-        ClearCardBody();
-        if (!started) lastPraise = Praises[Random.Range(0, Praises.Length)];
-
-        var qm = QuestManager.Instance;
-        var head = Row(cardBody, TextAnchor.MiddleCenter, 8f);
-        var ribbon = CuteUIKit.TitleRibbon(head, started ? "새 퀘스트" : "퀘스트 완료!", null, 15f);
-        ApplyFont(ribbon);
-        if (started && qm != null && qm.CurrentChapter != null && qm.CurrentQuest == def)
+        doneRT.gameObject.SetActive(true);
+        for (float t = doneCG.alpha * 0.2f; t < 0.2f; t += Time.unscaledDeltaTime)
         {
-            var step = CuteUIKit.Pill(head, $"{qm.CurrentChapterIndex + 1}장 · {qm.StepInChapter}/{qm.StepsInChapter}",
-                                      CuteUIKit.LatteLight, CuteUIKit.Cocoa, 12f, 10, new RectOffset(9, 9, 3, 3), out _);
-            ApplyFont(step);
+            doneCG.alpha = t / 0.2f;
+            yield return null;
         }
-
-        var title = NewText(cardBody, def.questName, started ? 24f : 20f, started ? CuteUIKit.Cocoa : CuteUIKit.Strawberry, FontStyles.Bold);
-        title.alignment = TextAlignmentOptions.Center;
-
-        if (!started)
+        doneCG.alpha = 1f;
+        yield return new WaitForSecondsRealtime(DoneHold);
+        for (float t = 0f; t < 0.4f; t += Time.unscaledDeltaTime)
         {
-            CocoRow(cardBody, lastPraise, 52f, 15f, stretch: false);
-            if (def.rewards.Count > 0 || def.rewardCoins > 0)
-            {
-                var rewards = Row(cardBody, TextAnchor.MiddleCenter, 0f);
-                BuildRewardRow(rewards, def, 26f);
-            }
-            return;
+            doneCG.alpha = 1f - t / 0.4f;
+            yield return null;
         }
-
-        string talk = !string.IsNullOrEmpty(def.talk) ? def.talk : def.description;
-        if (!string.IsNullOrEmpty(talk)) CocoRow(cardBody, talk, 66f, 16f);
-
-        var objs = qm != null && qm.CurrentQuest == def ? qm.ActiveObjectives : null;
-        for (int i = 0; i < def.objectives.Count; i++)
-        {
-            var src = def.objectives[i];
-            int cur = objs != null && i < objs.Count ? objs[i].currentAmount : 0;
-            var line = Row(cardBody, TextAnchor.MiddleCenter, 8f);
-            var bg = line.gameObject.AddComponent<Image>();
-            CuteUIKit.SetRounded(bg, 12, CurrentRowFill);
-            bg.raycastTarget = false;
-            var hl = line.GetComponent<HorizontalLayoutGroup>();
-            hl.padding = new RectOffset(10, 12, 5, 5);
-            NewIcon(line, QuestIcons.For(src), 30f);
-            NewText(line, src.GetLabel(), 16f, TextColor, FontStyles.Bold);
-            NewText(line, $"{cur}/{src.targetAmount}", 15f, CuteUIKit.CocoaSoft, FontStyles.Bold);
-        }
-
-        string hint = def.HintText;
-        if (!string.IsNullOrEmpty(hint))
-        {
-            var hintCard = CuteUIKit.Card(cardBody, CuteUIKit.ButterSoft, 12, "HowTo");
-            hintCard.raycastTarget = false;
-            var hv = hintCard.gameObject.AddComponent<HorizontalLayoutGroup>();
-            hv.padding = new RectOffset(12, 12, 7, 7);
-            hv.spacing = 8f;
-            hv.childAlignment = TextAnchor.MiddleLeft;
-            hv.childControlWidth = hv.childControlHeight = true;
-            hv.childForceExpandWidth = hv.childForceExpandHeight = false;
-            var tag = CuteUIKit.Pill(hintCard.transform, "방법", CuteUIKit.Strawberry, Color.white, 12f, 9, new RectOffset(8, 8, 2, 2), out _);
-            ApplyFont(tag);
-            var ht = NewText(hintCard.transform, hint, 15f, TextColor, FontStyles.Bold, wrap: true);
-            ht.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
-        }
-
-        var skip = NewText(cardBody, Pad.Active ? "A: 넘기기" : "클릭하면 넘겨요", 11f, CuteUIKit.CocoaMuted);
-        skip.alignment = TextAlignmentOptions.Center;
+        doneCG.alpha = 0f;
+        doneRT.gameObject.SetActive(false);
+        doneCo = null;
     }
 
     private void FillChapterCard(QuestDefinition def)
@@ -581,46 +504,6 @@ public class QuestUI : MonoBehaviour
         name.alignment = TextAlignmentOptions.Center;
     }
 
-    private void FillCompletedBatch(List<QuestDefinition> defs)
-    {
-        ClearCardBody();
-        lastPraise = Praises[Random.Range(0, Praises.Length)];
-
-        var head = Row(cardBody, TextAnchor.MiddleCenter, 8f);
-        var ribbon = CuteUIKit.TitleRibbon(head, $"퀘스트 {defs.Count}개 완료!", null, 15f);
-        ApplyFont(ribbon);
-
-        var names = new List<string>();
-        foreach (var d in defs) names.Add(d.questName);
-        var title = NewText(cardBody, string.Join("  ·  ", names), 17f, CuteUIKit.Strawberry, FontStyles.Bold, wrap: true);
-        title.alignment = TextAlignmentOptions.Center;
-
-        CocoRow(cardBody, lastPraise, 52f, 15f, stretch: false);
-
-        var items = new List<QuestReward>();
-        int coins = 0;
-        foreach (var d in defs)
-        {
-            coins += d.rewardCoins;
-            foreach (var r in d.rewards)
-            {
-                if (r.item == null) continue;
-                var same = items.Find(x => x.item == r.item);
-                if (same != null) same.amount += r.amount;
-                else items.Add(new QuestReward { item = r.item, amount = r.amount });
-            }
-        }
-        if (items.Count > 0 || coins > 0)
-            BuildRewardRow(Row(cardBody, TextAnchor.MiddleCenter, 0f), items, coins, 26f);
-    }
-
-    private static readonly string[] Praises =
-    {
-        "잘했어요, 대원님!", "역시 대원님이에요!", "최고예요!", "우와, 벌써 해냈어요!",
-        "고향별 고양이들이 기뻐할 거예요!", "척척 해내네요!", "이 기세로 계속 가요!",
-    };
-    private string lastPraise = "잘했어요, 대원님!";
-
     private void CocoRow(Transform parent, string line, float portrait, float fontSize, bool stretch = true)
         => CocoUI.Row(parent, line, portrait, fontSize, stretch, fontAsset);
 
@@ -668,47 +551,16 @@ public class QuestUI : MonoBehaviour
         cardRT.gameObject.SetActive(false);
     }
 
-    private IEnumerator PopIn()
+    // 새 퀘스트: 패널이 한 번만 은은하게
+    private IEnumerator NewQuestGlow()
     {
-        const float duration = 0.3f;
-        float t = 0f;
-        while (t < duration)
+        const float duration = 1.1f;
+        for (float t = 0f; t < duration; t += Time.unscaledDeltaTime)
         {
-            t += Time.unscaledDeltaTime;
-            float ease = CuteUIKit.EaseOutBack(t / duration, 2.2f);
-            panelRT.localScale = Vector3.one * Mathf.LerpUnclamped(0.85f, 1f, ease);
-            yield return null;
-        }
-        panelRT.localScale = Vector3.one;
-    }
-
-    private IEnumerator UpdateBlink()
-    {
-        float t = 0f;
-        float duration = 0.35f;
-        while (t < duration)
-        {
-            t += Time.unscaledDeltaTime;
-            float p     = Mathf.Clamp01(t / duration);
-            float pulse = 1f - Mathf.Abs(p * 2f - 1f);
-            SetCardColors(Color.Lerp(CuteUIKit.Cream, BlinkFillColor, pulse),
-                          Color.Lerp(CuteUIKit.Latte, BlinkBorderColor, pulse));
+            SetCardColors(Color.Lerp(CuteUIKit.Cream, CuteUIKit.ButterSoft, Mathf.Sin(t / duration * Mathf.PI)), CuteUIKit.Latte);
             yield return null;
         }
         SetCardColors(CuteUIKit.Cream, CuteUIKit.Latte);
-    }
-
-    private IEnumerator CompletionFlash()
-    {
-        float t = 0f;
-        while (t < 0.6f)
-        {
-            t += Time.unscaledDeltaTime;
-            float pulse = Mathf.Abs(Mathf.Sin(t * Mathf.PI * 5f));
-            questNameText.color = Color.Lerp(QuestNameBaseColor, CompleteFlashColor, pulse);
-            yield return null;
-        }
-        questNameText.color = QuestNameBaseColor;
     }
 
     private void SetCardColors(Color fill, Color border)
@@ -726,15 +578,15 @@ public class QuestUI : MonoBehaviour
         panelRT.anchoredPosition = new Vector2(20f, -20f);
         panelRT.sizeDelta        = new Vector2(PanelWidth, 0f);
 
-        CuteUIKit.DecorateWindow(panelRT, catEars: false, radius: CardRadius, border: 4);
+        CuteUIKit.DecorateWindow(panelRT, catEars: false, radius: CardRadius, border: 2);
         cardBorder = FindLayerImage("Cute_Border");
         cardFill   = FindLayerImage("Cute_Fill");
 
         panelCG = gameObject.AddComponent<CanvasGroup>();
 
         var vlg = gameObject.AddComponent<VerticalLayoutGroup>();
-        vlg.padding               = new RectOffset(16, 16, 14, 14);
-        vlg.spacing               = 7f;
+        vlg.padding               = new RectOffset(14, 14, 10, 12);
+        vlg.spacing               = 5f;
         vlg.childForceExpandWidth = true;
         vlg.childForceExpandHeight= false;
         vlg.childControlWidth     = true;
@@ -746,7 +598,7 @@ public class QuestUI : MonoBehaviour
         BuildHeader();
         goalText = NewText(transform, "", 13f, CuteUIKit.CocoaSoft, FontStyles.Normal, wrap: true);
         goalText.name = "ChapterGoal";
-        CuteUIKit.DottedDivider(transform);
+        goalText.gameObject.SetActive(false);
 
         questNameText = NewText(transform, "퀘스트 로딩 중", 20f, QuestNameBaseColor, FontStyles.Bold, wrap: true);
         questNameText.name = "QuestName";
@@ -763,13 +615,8 @@ public class QuestUI : MonoBehaviour
         objectiveContainer = containerGO.transform;
 
         BuildHintRow();
-
-        var toggleBtn = CuteUIKit.Button(transform, ToggleLabel(false), CuteUIKit.ButtonSky, ToggleLog, -1f, 24f, 12f);
-        toggleBtn.name = "ToggleBtn";
-        toggleBtnText = toggleBtn.GetComponentInChildren<TextMeshProUGUI>(true);
-        if (fontAsset != null) toggleBtnText.font = fontAsset;
-
         BuildLogSection();
+        BuildDoneStrip();
     }
 
     private void BuildHeader()
@@ -783,23 +630,18 @@ public class QuestUI : MonoBehaviour
         hlg.childForceExpandWidth  = false;
         hlg.childForceExpandHeight = false;
 
-        var ribbon = CuteUIKit.TitleRibbon(headerGO.transform, "진행 중인 퀘스트", null, 14f);
-        ApplyFont(ribbon);
-        chapterText = ribbon.GetComponentInChildren<TextMeshProUGUI>(true);
+        chapterText = NewText(headerGO.transform, "진행 중인 퀘스트", 13f, CuteUIKit.CocoaSoft, FontStyles.Bold);
+        chapterText.name = "Chapter";
 
         var spacer = new GameObject("Spacer", typeof(RectTransform));
         spacer.transform.SetParent(headerGO.transform, false);
         spacer.AddComponent<LayoutElement>().flexibleWidth = 1f;
 
-        var step = CuteUIKit.Pill(headerGO.transform, "1/1", CuteUIKit.LatteLight, CuteUIKit.Cocoa, 13f, 10,
-                                  new RectOffset(9, 9, 3, 3), out stepText);
+        var step = CuteUIKit.Pill(headerGO.transform, "1/1", CuteUIKit.LatteLight, CuteUIKit.Cocoa, 12f, 9,
+                                  new RectOffset(8, 8, 2, 3), out stepText);
         ApplyFont(step);
         step.gameObject.SetActive(false);
 
-        var journey = CuteUIKit.Pill(headerGO.transform, MobileMode.Active ? "여정" : "여정 (L)", CuteUIKit.ButtonSky,
-                                     CuteUIKit.TextOn(CuteUIKit.ButtonSky), 12f, 10, new RectOffset(8, 8, 3, 3), out _);
-        ApplyFont(journey);
-        journey.gameObject.AddComponent<CutePop>();
         var hit = headerGO.AddComponent<Image>();
         hit.color = Color.clear;
         var btn = headerGO.AddComponent<Button>();
@@ -807,24 +649,30 @@ public class QuestUI : MonoBehaviour
         btn.onClick.AddListener(JourneyUI.Toggle);
         headerGO.AddComponent<UiButtonSfx>();
         hlg.spacing = 6f;
+
+        // 모바일은 손가락 크기로
+        var toggle = CuteUIKit.Pill(headerGO.transform, ToggleLabel(false), CuteUIKit.ButtonLatte, CuteUIKit.Cocoa, 12f, 9,
+                                    MobileMode.Active ? new RectOffset(16, 16, 8, 9) : new RectOffset(8, 8, 2, 3), out toggleBtnText);
+        toggle.name = "ToggleBtn";
+        ApplyFont(toggle);
+        toggle.GetComponent<Image>().raycastTarget = true;
+        var toggleButton = toggle.gameObject.AddComponent<Button>();
+        toggleButton.transition = Selectable.Transition.None;
+        toggleButton.onClick.AddListener(ToggleLog);
+        toggle.gameObject.AddComponent<UiButtonSfx>();
+        toggle.gameObject.AddComponent<CutePop>();
     }
 
     private void BuildHintRow()
     {
-        var border = CuteUIKit.Card(transform, CuteUIKit.Latte, 13, "Hint");
-        border.raycastTarget = false;
-        hintRow = border.gameObject;
-        CuteUIKit.Layer(border.transform, "Fill", CuteUIKit.Rounded(11), CuteUIKit.ButterSoft, 2f);
+        hintRow = new GameObject("Hint", typeof(RectTransform));
+        hintRow.transform.SetParent(transform, false);
         var vlg = hintRow.AddComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(11, 11, 8, 9);
-        vlg.spacing = 6f;
+        vlg.padding = new RectOffset(2, 2, 2, 0);
+        vlg.spacing = 5f;
         vlg.childControlWidth = vlg.childControlHeight = true;
         vlg.childForceExpandWidth = true;
         vlg.childForceExpandHeight = false;
-
-        var tagRow = Row(hintRow.transform, TextAnchor.MiddleLeft, 6f);
-        var tag = CuteUIKit.Pill(tagRow, "지금 할 일", CuteUIKit.PinkSoft, CuteUIKit.Cocoa, 12f, 9, new RectOffset(8, 9, 2, 3), out _);
-        ApplyFont(tag);
 
         hintText = NewText(hintRow.transform, "", 15f, CuteUIKit.Cocoa, FontStyles.Bold, wrap: true);
         hintText.name = "HintText";
@@ -835,7 +683,7 @@ public class QuestUI : MonoBehaviour
         whyText.name = "WhyText";
         whyText.richText = true;
 
-        shortcutBtn = CuteUIKit.Button(hintRow.transform, "바로가기", CuteUIKit.ButtonMint, OnShortcut, -1f, 30f, 13f);
+        shortcutBtn = CuteUIKit.Button(hintRow.transform, "바로가기", CuteUIKit.ButtonMint, OnShortcut, -1f, 26f, 13f);
         shortcutBtn.name = "Shortcut";
         shortcutText = shortcutBtn.GetComponentInChildren<TextMeshProUGUI>(true);
         if (fontAsset != null) shortcutText.font = fontAsset;
@@ -862,6 +710,34 @@ public class QuestUI : MonoBehaviour
         logContentRT = logSectionGO.transform;
     }
 
+    // 완료 알림: 패널 바로 아래 한 줄
+    private void BuildDoneStrip()
+    {
+        var card = CuteUIKit.Card(transform, CuteUIKit.MintTag, 12, "QuestDone");
+        card.raycastTarget = false;
+        card.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+        doneRT = card.rectTransform;
+        doneRT.anchorMin = doneRT.anchorMax = Vector2.zero;
+        doneRT.pivot = new Vector2(0f, 1f);
+        doneRT.anchoredPosition = new Vector2(0f, -8f);
+
+        var hlg = card.gameObject.AddComponent<HorizontalLayoutGroup>();
+        hlg.padding = new RectOffset(11, 9, 5, 6);
+        hlg.spacing = 6f;
+        hlg.childAlignment = TextAnchor.MiddleLeft;
+        hlg.childControlWidth = hlg.childControlHeight = true;
+        hlg.childForceExpandWidth = hlg.childForceExpandHeight = false;
+        var fit = card.gameObject.AddComponent<ContentSizeFitter>();
+        fit.horizontalFit = fit.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        doneCG = card.gameObject.AddComponent<CanvasGroup>();
+        doneCG.blocksRaycasts = false;
+        doneCG.alpha = 0f;
+        doneText = NewText(card.transform, "", 14f, CuteUIKit.MintText, FontStyles.Bold);
+        doneText.name = "DoneText";
+        doneRT.gameObject.SetActive(false);
+    }
+
     private void AddRow()
     {
         var row = new ObjectiveRow();
@@ -870,15 +746,15 @@ public class QuestUI : MonoBehaviour
         row.bg.raycastTarget = false;
         row.root = row.bg.gameObject;
         var hlg = row.root.AddComponent<HorizontalLayoutGroup>();
-        hlg.padding                = new RectOffset(6, 8, 4, 5);
-        hlg.spacing                = 8f;
+        hlg.padding                = new RectOffset(2, 4, 3, 3);
+        hlg.spacing                = 7f;
         hlg.childAlignment         = TextAnchor.MiddleLeft;
         hlg.childControlWidth      = true;
         hlg.childControlHeight     = true;
         hlg.childForceExpandWidth  = false;
         hlg.childForceExpandHeight = false;
 
-        row.icon = NewIcon(row.root.transform, null, 28f);
+        row.icon = NewIcon(row.root.transform, null, 24f);
 
         var col = new GameObject("Col", typeof(RectTransform));
         col.transform.SetParent(row.root.transform, false);
@@ -901,7 +777,7 @@ public class QuestUI : MonoBehaviour
         row.count.alignment = TextAlignmentOptions.Right;
         row.count.gameObject.AddComponent<LayoutElement>().minWidth = 44f;
 
-        var barFill = CuteUIKit.Bar(col.transform, 9f, CuteUIKit.LatteLight, ProgressColor);
+        var barFill = CuteUIKit.Bar(col.transform, 6f, CuteUIKit.LatteLight, ProgressColor);
         row.fill = barFill.GetComponent<Image>();
         CuteUIKit.SetBar(barFill, 0f);
 

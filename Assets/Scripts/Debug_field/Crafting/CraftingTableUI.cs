@@ -473,6 +473,7 @@ public class CraftingTableUI : MonoBehaviour, IBeginDragHandler, IDragHandler
             TileType.Storage    => Tab.Storage,
             TileType.Decoration => Tab.Decoration,
             TileType.ShuttlePad => Tab.Civilization,
+            TileType.Camp       => Tab.Civilization,
             _                   => Tab.Machine,
         };
     }

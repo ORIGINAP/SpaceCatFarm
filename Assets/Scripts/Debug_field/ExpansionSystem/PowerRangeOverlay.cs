@@ -3,10 +3,10 @@ using UnityEngine;
 
 public class PowerRangeOverlay : MonoBehaviour
 {
-    public static readonly Color OnColor      = new(0.45f, 0.9f, 1f, 0.85f);
-    public static readonly Color OffColor     = new(0.72f, 0.72f, 0.78f, 0.55f);
-    public static readonly Color PreviewColor = new(1f, 1f, 1f, 0.9f);
-    private const float Width        = 0.06f;
+    public static readonly Color OnColor      = new(0.53f, 0.89f, 1f, 0.6f);
+    public static readonly Color OffColor     = new(0.72f, 0.72f, 0.78f, 0.45f);
+    public static readonly Color PreviewColor = new(1f, 1f, 1f, 0.75f);
+    private const float Width        = 0.04f;
     private const int   SortingOrder = 45;
 
     private static PowerRangeOverlay instance;
@@ -20,7 +20,6 @@ public class PowerRangeOverlay : MonoBehaviour
     {
         instance = null;
         OnShowingChanged = null;
-        circleBuffer = new Vector3[0];
     }
 
     private readonly List<LineRenderer> lines = new();
@@ -100,7 +99,7 @@ public class PowerRangeOverlay : MonoBehaviour
         int w = node.FootprintMax.x - node.FootprintMin.x + 1;
         int h = node.FootprintMax.y - node.FootprintMin.y + 1;
         Vector3 center = gm.GridToWorldCenter(node.FootprintMin, w, h);
-        SetCircle(line, center, PowerRange.Reach(node.FootprintMin, node.FootprintMax, radius) * gm.CellSize);
+        WorldCircleOutline.SetRect(line, center, (w * 0.5f + radius) * gm.CellSize, (h * 0.5f + radius) * gm.CellSize);
         line.startColor = line.endColor = on ? OnColor : OffColor;
         line.enabled = true;
     }
@@ -121,20 +120,7 @@ public class PowerRangeOverlay : MonoBehaviour
 
         var gm = GridManager.Instance;
         if (gm != null && w > 0 && h > 0)
-            SetCircle(line, Vector3.zero, PowerRange.Reach(w, h, radiusCells) * gm.CellSize);
+            WorldCircleOutline.SetRect(line, Vector3.zero, (w * 0.5f + radiusCells) * gm.CellSize, (h * 0.5f + radiusCells) * gm.CellSize);
         return line;
-    }
-
-    private static Vector3[] circleBuffer = new Vector3[0];
-
-    private static void SetCircle(LineRenderer line, Vector3 center, float radius)
-    {
-        int n = Mathf.Clamp(Mathf.CeilToInt(radius * 6f), 48, 160);
-        if (circleBuffer.Length < n) circleBuffer = new Vector3[n];
-        float step = Mathf.PI * 2f / n;
-        for (int i = 0; i < n; i++)
-            circleBuffer[i] = center + new Vector3(Mathf.Cos(i * step) * radius, Mathf.Sin(i * step) * radius);
-        line.positionCount = n;
-        line.SetPositions(circleBuffer);
     }
 }

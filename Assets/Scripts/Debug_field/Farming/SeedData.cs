@@ -25,5 +25,8 @@ public class SeedData : ScriptableObject
     [Tooltip("잘 자라는 조건")]
     public CropTrait trait = CropTrait.None;
 
+    [Tooltip("잘 자라는 특산 토양")]
+    public SoilType preferredSoil = SoilType.None;
+
     public float TotalGrowthSeconds => cropData != null && cropData.StageCount > 1 ? cropData.TotalGrowthTime : growthTime;
 }

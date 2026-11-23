@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a888e0bced5bddb42928b3c84198ab7f, type: 3}
+  m_Name: C6_01c1_Mega
+  m_EditorClassIdentifier: Assembly-CSharp::QuestDefinition
+  questName: "\uBA54\uAC00 \uC790\uB3D9\uD654"
+  description: "\uC790\uB3D9\uD654 3\uB2E8\uACC4: 1\uB2E8\uACC4 7\xD77\uCE78 \xB7
+    \uCD08\uB2F9 0.8\uCE78 \u2192 2\uB2E8\uACC4 14\xD714\uCE78 \xB7 \uCD08\uB2F9
+    4\uCE78 \u2192 3\uB2E8\uACC4 27\xD727\uCE78 \xB7 \uCD08\uB2F9 24\uCE78."
+  talk: "\uB808\uC774\uB354 \uB2EC\uB9B0 \uBA54\uAC00 \uC790\uB3D9\uC218\uD655\uAE30\uBA74
+    27\xD727\uCE78 \uB4E4\uD310\uC744 1\uCD08\uB9C8\uB2E4 \uD6D1\uC5B4\uC694! \uC218\uD655\uAE30
+    \uD558\uB098\uAC00 \uB9C8\uC744 \uD558\uB098 \uBAAB\uC774\uC5D0\uC694."
+  hint: "[\uC81C\uC791](C) \u2192 \uBA54\uAC00 \uC790\uB3D9\uC218\uD655\uAE30 \u2192
+    \uB113\uC740 \uBC2D \uD55C\uAC00\uC6B4\uB370 \uC124\uCE58"
+  padHint: "\uC2ED\uC790\uD0A4 \u2191 \uC81C\uC791 \u2192 \uBA54\uAC00 \uC790\uB3D9\uC218\uD655\uAE30
+    \u2192 RT\uB85C \uC124\uCE58"
+  tutorialTip: "\uC218\uC815 \uC9C0\uB300 \uD2F0\uD0C0\uB284\uC73C\uB85C \uB9CC\uB4E0
+    \uD2F0\uD0C0\uB284 \uD569\uAE08\uC774 \uB4E4\uC5B4\uAC00\uC694."
+  objectives:
+  - type: 3
+    targetItem: {fileID: 11400000, guid: 2fdcdfe66153a3843aa050b9f3f70879, type: 2}
+    targetTechNodeId: 
+    targetAmount: 1
+  - type: 12
+    targetItem: {fileID: 11400000, guid: a675a71de4ef51c4291468341de6d436, type: 2}
+    targetTechNodeId: 
+    targetAmount: 200
+  rewards: []
+  rewardCoins: 10000

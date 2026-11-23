@@ -131,9 +131,11 @@ public class FacilityPopup : MonoBehaviour
         string status = target switch
         {
             ItemStorage s => s.IsUnlimited ? $"보관 {s.TotalCount} / ∞" : $"보관 {s.TotalCount} / {s.Capacity}",
-            AutoSeeder sd => $"씨앗 {sd.TotalCount} / {sd.Capacity}",
+            CargoRail rail => CargoRails.StatusOf(rail),
+            AutoSeeder sd => sd.IsStarved ? $"씨앗이 떨어졌어요 — 씨앗을 든 채 {(Pad.Active ? "A" : "클릭")}" : $"씨앗 {sd.TotalCount} / {sd.Capacity}",
             CatKitchen k  => k.Recipe != null ? $"메뉴: {k.Recipe.outputItem.itemName}" : "메뉴를 골라 주세요",
             Composter c   => $"퇴비 {c.OutputCount}개",
+            AutoHarvester h when h.StorageFull => "창고가 차서 쉬는 중",
             ShuttlePad p  => p.Shuttle == null ? "셔틀이 오는 중" : p.Shuttle.away ? "셔틀이 고향별에 가 있어요" : $"모자란 짐: {ShuttleUI.MissingText(p.Shuttle)}",
             _ => "",
         };

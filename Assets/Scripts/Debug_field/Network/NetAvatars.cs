@@ -7,6 +7,14 @@ public class NetAvatars
 {
     private const float FollowSharpness = 12f;
     private const float SnapDistance    = 4f;
+    private const float WalkThreshold   = 0.04f;
+
+    private static readonly int WalkUp    = Animator.StringToHash("isWalkUp");
+    private static readonly int WalkDown  = Animator.StringToHash("isWalkDown");
+    private static readonly int WalkLeft  = Animator.StringToHash("isWalkLeft");
+    private static readonly int WalkRight = Animator.StringToHash("isWalkRight");
+    private static readonly int LastX     = Animator.StringToHash("last.x");
+    private static readonly int LastY     = Animator.StringToHash("last.y");
 
     private sealed class Avatar
     {
@@ -14,6 +22,8 @@ public class NetAvatars
         public Vector3     target;
         public TextMeshPro label;
         public SpriteRenderer pill;
+        public Animator    anim;
+        public int         walk = -1;
         public CatSkinRenderer skin;
         public int         color = -1, accessory = -1;
         public float       headroom;
@@ -73,7 +83,29 @@ public class NetAvatars
         {
             if (a.root == null) continue;
             var p = a.root.position;
-            a.root.position = (a.target - p).sqrMagnitude > SnapDistance * SnapDistance ? a.target : Vector3.Lerp(p, a.target, k);
+            Vector2 gap = a.target - p;
+            a.root.position = gap.sqrMagnitude > SnapDistance * SnapDistance ? a.target : Vector3.Lerp(p, a.target, k);
+            Animate(a, gap);
+        }
+    }
+
+    // 로컬 PlayerAnimator와 같은 파라미터
+    private static void Animate(Avatar a, Vector2 gap)
+    {
+        if (a.anim == null || a.anim.runtimeAnimatorController == null) return;
+        int walk = gap.magnitude < WalkThreshold ? -1
+                 : Mathf.Abs(gap.y) >= Mathf.Abs(gap.x) ? (gap.y > 0f ? WalkUp : WalkDown)
+                 : (gap.x > 0f ? WalkRight : WalkLeft);
+        if (walk == a.walk) return;
+        a.walk = walk;
+        a.anim.SetBool(WalkUp, walk == WalkUp);
+        a.anim.SetBool(WalkDown, walk == WalkDown);
+        a.anim.SetBool(WalkLeft, walk == WalkLeft);
+        a.anim.SetBool(WalkRight, walk == WalkRight);
+        if (walk != -1)
+        {
+            a.anim.SetFloat(LastX, gap.x);
+            a.anim.SetFloat(LastY, gap.y);
         }
     }
 
@@ -98,8 +130,12 @@ public class NetAvatars
             sr.size           = src.size;
         }
         var anim = local.GetComponent<Animator>();
+        Animator remoteAnim = null;
         if (anim != null && anim.runtimeAnimatorController != null)
-            go.AddComponent<Animator>().runtimeAnimatorController = anim.runtimeAnimatorController;
+        {
+            remoteAnim = go.AddComponent<Animator>();
+            remoteAnim.runtimeAnimatorController = anim.runtimeAnimatorController;
+        }
         var skin = go.AddComponent<CatSkinRenderer>();
 
         var layers   = SortingLayer.layers;
@@ -129,7 +165,7 @@ public class NetAvatars
         pill.sortingOrder   = 199;
 
         CatPresence.Register(go.transform);
-        var avatar = new Avatar { root = go.transform, target = go.transform.position, label = label, pill = pill, skin = skin };
+        var avatar = new Avatar { root = go.transform, target = go.transform.position, label = label, pill = pill, skin = skin, anim = remoteAnim };
         PlaceTag(avatar, sr.sprite);
         return avatar;
     }

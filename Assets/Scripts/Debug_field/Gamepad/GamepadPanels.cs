@@ -12,6 +12,7 @@ public static class GamepadPanels
     }
 
     public const int RingCount = 6;
+    public const int ShuttleRing = 5;
 
     private static MainMenuUI mainMenu;
     private static readonly List<Panel> open = new();
@@ -64,6 +65,7 @@ public static class GamepadPanels
         if (ComposterUI.IsOpen)          list.Add(new Panel(ComposterUI.Instance.transform, -1));
         if (CodexUI.IsOpen)              list.Add(new Panel(CodexUI.Instance.transform, -1));
         if (FacilityPopup.IsOpen)        list.Add(new Panel(FacilityPopup.Instance.transform, -1));
+        if (NpcChatUI.IsOpen)            list.Add(new Panel(NpcChatUI.Root, -1));
 
         if (HelpUI.AnyOpen)              list.Add(new Panel(HelpUI.PanelRoot, -1));
         if (DevPanelUI.AnyOpen)          list.Add(new Panel(DevPanelUI.PanelRoot, -1));
@@ -143,6 +145,7 @@ public static class GamepadPanels
         if (ComposterUI.IsOpen) ComposterUI.Instance.Close();
         if (CodexUI.IsOpen) CodexUI.Instance.Close();
         FacilityPopup.Close();
+        NpcChatUI.CloseIfOpen();
         HelpUI.CloseIfOpen();
         DevPanelUI.CloseIfOpen();
         LabPanelUI.CloseIfOpen();

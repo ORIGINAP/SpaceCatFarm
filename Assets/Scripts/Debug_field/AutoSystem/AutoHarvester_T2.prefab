@@ -49,16 +49,11 @@ MonoBehaviour:
   dismantleTime: 2
   dropItemData: {fileID: 11400000, guid: 07926f76c06948aaa82ef0feaf3666e7, type: 2}
   canDismantle: 1
-  dropIconScale: 0
-  harvestInterval: 2
-  searchRadius: 6
+  solidDepth: 0
+  harvestInterval: 1.5
+  searchRadius: 4.5
   targetsPerCycle: 6
-  connectionLineColor: {r: 1, g: 0.85, b: 0.15, a: 0.8}
-  connectionLineWidth: 0.03
   coverageColor: {r: 1, g: 0.7, b: 0.2, a: 0.12}
-  beamColor: {r: 1, g: 1, b: 1, a: 0.9}
-  beamWidth: 0.03
-  beamFlashDuration: 0.4
   nextHarvestAt: 0
 --- !u!212 &2210589267165940321
 SpriteRenderer:

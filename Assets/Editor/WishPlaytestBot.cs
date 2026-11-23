@@ -112,6 +112,7 @@ public static class WishPlaytestBot
         miningBlock = null;
         chapterStart.Clear();
         wantedAt.Clear();
+        GrowBag();
         Running = true;
         EditorApplication.update -= Tick;
         EditorApplication.update += Tick;
@@ -126,6 +127,30 @@ public static class WishPlaytestBot
         if (miningBlock != null) miningBlock.StopMining();
         Time.timeScale = 1f;
         Log("봇 멈춤: " + why);
+    }
+
+    // 사람의 창고 정리 대신 측정 중에만 가방 확장
+    private const int BotBagSlots = 140;
+
+    private static void GrowBag()
+    {
+        var inv = Inventory.Instance;
+        if (inv == null || inv.SlotCount >= BotBagSlots) return;
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var field = typeof(Inventory).GetField("slots", flags);
+        var old = (InventorySlot[])field.GetValue(inv);
+        var grown = new InventorySlot[BotBagSlots];
+        for (int i = 0; i < grown.Length; i++) grown[i] = i < old.Length ? old[i] : new InventorySlot();
+        field.SetValue(inv, grown);
+        typeof(Inventory).GetField("slotCount", flags).SetValue(inv, BotBagSlots);
+    }
+
+    private static int UsedSlots()
+    {
+        var inv = Inventory.Instance;
+        int n = 0;
+        for (int i = 0; i < inv.SlotCount; i++) { var s = inv.GetSlot(i); if (s != null && !s.IsEmpty) n++; }
+        return n;
     }
 
     private static float GameT => Time.time - gameStart;
@@ -189,7 +214,7 @@ public static class WishPlaytestBot
             if (ch != null && !chapterStart.ContainsKey(ch.title))
             {
                 chapterStart[ch.title] = GameT;
-                Log($"=== {qm.CurrentChapterIndex + 1}장 {ch.title} 시작 (코인 {Coins()}) ===");
+                Log($"=== {qm.CurrentChapterIndex + 1}장 {ch.title} 시작 (코인 {Coins()} · 밭 {PlotCount()} · 주민 {ShuttleService.Population} · 가방 {UsedSlots()}칸 · 전초 {CargoRails.OutpostCount} · 레일 {Tiles<CargoRail>(TileType.CargoRail).Count} · 중계탑 {Tiles<PowerRelay>(TileType.PowerRelay).Count} · 토양 밭 {Plots().FindAll(p => p.SoilKind != SoilType.None).Count}) ===");
             }
             Log($"시작 {q} {qm.CurrentQuest?.questName} | 안내: {QuestGuide.Current.action}");
         }
@@ -198,8 +223,10 @@ public static class WishPlaytestBot
 
         // 진행도 해시로 막힘 감지
         int key = qm.CurrentQuestIndex * 100000;
-        foreach (var o in qm.ActiveObjectives) key += o.currentAmount;
-        key += ShuttleService.Population * 7 + HarvestLog.Count * 13;
+        bool civ = false;
+        foreach (var o in qm.ActiveObjectives) { key += o.currentAmount; civ |= o.type == QuestObjectiveType.CoreLevel; }
+        // 주민 · 수확은 늘 늘어나서 문명 조건 퀘스트에서만 진행으로 셈
+        if (civ) key += ShuttleService.Population * 7 + HarvestLog.Count * 13;
         if (key != lastKey) { lastKey = key; lastProgressAt = Time.time; }
         else if (Time.time - lastProgressAt > 600f)
         {
@@ -226,12 +253,20 @@ public static class WishPlaytestBot
         {
             UpdateMining();
             Chores();
+            QuestObjective first = null;
             foreach (var o in qm.ActiveObjectives)
             {
                 if (o.IsComplete) continue;
-                Status = $"{q} {o.type} {(o.targetItem ? o.targetItem.itemName : "")} {o.currentAmount}/{o.targetAmount}";
-                Act(o);
-                break;
+                if (first == null)
+                {
+                    first = o;
+                    Status = $"{q} {o.type} {(o.targetItem ? o.targetItem.itemName : "")} {o.currentAmount}/{o.targetAmount}";
+                    Act(o);
+                    if (o.type != QuestObjectiveType.Stockpile) break;
+                    continue;
+                }
+                // 안내처럼 다음 비축도 같이 챙김
+                if (o.type == QuestObjectiveType.Stockpile) Act(o);
             }
         }
         catch (Exception e)
@@ -255,6 +290,7 @@ public static class WishPlaytestBot
             case QuestObjectiveType.HarvestPlant:
                 if (o.targetItem != null) EnsureGrowing(o.targetItem, 3);
                 else if (!AnyGrowing()) PlantAny();
+                Shuttles(0); // 기다리는 동안 셔틀 병행
                 break;
             case QuestObjectiveType.CollectItem:
                 Obtain(o.targetItem, o.targetAmount - o.currentAmount + Count(o.targetItem), 0);
@@ -281,16 +317,574 @@ public static class WishPlaytestBot
                 else Obtain(o.targetItem, 1, 0);
                 break;
             case QuestObjectiveType.UpgradeTech:
-                foreach (var n in TechTreeManager.Instance.Nodes) if (TechTreeManager.Instance.TryUpgrade(n)) break;
+                Research(o.targetTechNodeId);
+                break;
+            case QuestObjectiveType.LinkStorage:
+                LinkToStorage(o.targetItem);
+                break;
+            case QuestObjectiveType.AutoDepart:
+                AutoDepart();
+                break;
+            case QuestObjectiveType.MachineCrops:
+                MachineLines(o.targetAmount);
+                Shuttles(0);
+                break;
+            case QuestObjectiveType.AutoDish:
+                AutoDish();
+                break;
+            case QuestObjectiveType.Stockpile:
+                Stock(o.targetItem, o.targetAmount);
+                Shuttles(0);
+                break;
+            case QuestObjectiveType.FindSoil:
+                GoToSoil(o.targetItem);
+                break;
+            case QuestObjectiveType.SoilCrop:
+                SoilCrop(o.targetItem, o.targetAmount);
+                Shuttles(0);
+                break;
+            case QuestObjectiveType.Outposts:
+                BuildOutpost(o.targetItem);
+                Shuttles(0);
+                break;
+            case QuestObjectiveType.RailDelivery:
+                RailDeliver(o.targetItem);
+                Shuttles(0);
+                break;
+            case QuestObjectiveType.Purifiers:
+                PurifyEdge();
+                break;
+            case QuestObjectiveType.Biomes:
+                VisitBiome();
+                break;
+            case QuestObjectiveType.Landmarks:
+                OpenLandmark();
+                break;
+            case QuestObjectiveType.Charm:
+                Decorate(o.targetAmount);
+                break;
+            case QuestObjectiveType.Festival:
+                if (TownLife.FestivalBlock() == null) HoldFestival();
+                else if (!TownLife.HeldToday) EarnCoins();
                 break;
             case QuestObjectiveType.AutoHarvest:
                 AutoFarm();
+                Shuttles(0); // 기다리는 동안 셔틀 병행
                 break;
         }
     }
 
+    private static bool PlaceAtCell(FarmingItemData item, Vector2Int cell)
+    {
+        if (item == null) return false;
+        if (Count(item) <= 0) { Make(item, 1, 1); if (Count(item) <= 0) return false; }
+        var gm = GridManager.Instance;
+        cell = OutpostPlan.OpenCell(cell, item.tileWidth, item.tileHeight, item.tilePrefab);
+        Select(item);
+        GoTo(gm.GridToWorld(cell) + Vector3.down);
+        tryPlace.Invoke(PlayerTileController.Instance, new object[] { cell });
+        bool ok = gm.GetTile(cell) != null;
+        if (ok && item.name != "PlantTile") Log($"  설치 {item.itemName} {cell} (본진에서 {(cell - CenterCore.Current.GridPosition).magnitude:0}칸)");
+        return ok;
+    }
+
+    // 정화 경계 밖, 본진 오른쪽부터 돌아가며
+    private static void PurifyEdge()
+    {
+        var core = CenterCore.Current;
+        int edge = Purify.CoreRadius(core.Level) + 4 + Purify.Purifiers.Count * 2;
+        var dirs = new[] { Vector2Int.right, Vector2Int.up, Vector2Int.left, Vector2Int.down };
+        var d = dirs[Purify.Purifiers.Count % dirs.Length];
+        PlaceAtCell(NetWorld.Item("Item_Purifier"), core.GridPosition + d * edge);
+    }
+
+    private static void VisitBiome()
+    {
+        var map = TerrainMap.Current;
+        var gm = GridManager.Instance;
+        for (int i = 0; i < WorldThemeConfig.Count; i++)
+        {
+            if (Exploration.HasFound((WorldTheme)i)) continue;
+            float half = Mathf.Min(gm.GridWidth, gm.GridHeight) * 0.5f;
+            var cell = Vector2Int.RoundToInt(map.BiomeDirection((WorldTheme)i) * half * 0.5f);
+            GoTo(gm.GridToWorld(cell));
+            return;
+        }
+    }
+
+    private static void OpenLandmark()
+    {
+        var player = PlayerTileController.Instance;
+        var l = BiomeLandmark.Nearest(player.transform.position, true);
+        if (l == null) return;
+        GoTo(l.transform.position + Vector3.down);
+        l.TryOpen(player.transform.position);
+    }
+
+    private static void GoToSoil(FarmingItemData seed)
+    {
+        var gm = GridManager.Instance;
+        if (Soil.TryNearest(Soil.Of(seed), CenterCore.Current.GridPosition, out var patch))
+            GoTo(gm.GridToWorld(patch.center));
+    }
+
+    // 맞는 토양에 전기 → 밭 → 씨앗
+    private static void SoilCrop(FarmingItemData seed, int want)
+    {
+        var soil = Soil.Of(seed);
+        if (!Soil.TryNearest(soil, CenterCore.Current.GridPosition, out var patch)) return;
+        var em = EnergyManager.Instance;
+        if (em != null && !em.HasEnergy(patch.center))
+        {
+            PlaceAtCell(NetWorld.Item("Item_PowerRelay"), OutpostPlan.NextRelayCell(patch.center));
+            return;
+        }
+        if (!Purify.IsPure(patch.center))
+        {
+            PlaceAtCell(NetWorld.Item(Count(NetWorld.Item("Item_Purifier_T2")) > 0 ? "Item_Purifier_T2" : "Item_Purifier"), patch.center);
+            return;
+        }
+        var onSoil = Plots().FindAll(p => p.SoilKind == soil);
+        if (onSoil.Count < want) { PlaceAtCell(NetWorld.Item("PlantTile"), patch.center); return; }
+        if (Count(seed) <= 0) { Buy(seed, want); if (Count(seed) <= 0) return; }
+        foreach (var p in onSoil)
+        {
+            if (p.CurrentState != PlantTile.PlantState.Empty || !p.IsPowered) continue;
+            Select(seed);
+            tryPlant.Invoke(PlayerTileController.Instance, new object[] { p.GridPosition });
+            return;
+        }
+    }
+
+    private static void BuildOutpost(FarmingItemData kind)
+    {
+        bool ore = kind != null && kind.tilePrefab != null && kind.tilePrefab.GetComponent<ResourceExtractor>() != null;
+        var plan = OutpostPlan.Next(Soil.Of(kind), ore);
+        switch (plan.step)
+        {
+            case OutpostPlan.Step.HomeStorage:
+            case OutpostPlan.Step.Storage:
+                PlaceAtCell(NetWorld.Item("NormalStorage"), plan.cell);
+                break;
+            case OutpostPlan.Step.Power:
+                PlaceAtCell(NetWorld.Item("Item_PowerRelay"), plan.cell);
+                break;
+            case OutpostPlan.Step.Purify:
+                PlaceAtCell(NetWorld.Item(CenterCore.CurrentLevel >= 5 ? "Item_Purifier_T2" : "Item_Purifier"), plan.cell);
+                break;
+            case OutpostPlan.Step.Rail:
+                PlaceAtCell(NetWorld.Item("Item_CargoRail"), plan.cell);
+                break;
+            case OutpostPlan.Step.Producer:
+                if (plan.soil == SoilType.None) PlaceExtractor(plan.storage);
+                else if (PlaceAtCell(NetWorld.Item("AutoHarvester"), plan.cell)) LinkNearby<AutoHarvester>(TileType.AutoHarvester, plan.storage);
+                break;
+        }
+    }
+
+    private static void LinkNearby<T>(TileType type, ItemStorage storage) where T : TileItem
+    {
+        foreach (var m in Tiles<T>(type))
+            if (!MachineFarm.LinkedToStorage(m) && LinkRules.DistanceCells(m, storage) <= LinkRules.MaxDistanceCells
+                && TileItem.Link(storage, m)) Log($"  연결 {LinkRules.NameOf(m)} - 전초 창고");
+    }
+
+    private static void PlaceExtractor(ItemStorage storage)
+    {
+        var item = NetWorld.Item("T1_ResourceExtractor");
+        if (Count(item) <= 0) { Make(item, 1, 1); if (Count(item) <= 0) return; }
+        var gm = GridManager.Instance;
+        ResourceBlock block = null;
+        float best = float.MaxValue;
+        foreach (var b in ResourceBlock.Active)
+        {
+            if (b == null || b.RemainingResources <= 0 || b.Data == null || b.Data.minToolGrade > 1) continue;
+            float d = (b.transform.position - storage.transform.position).sqrMagnitude;
+            if (d < best) { best = d; block = b; }
+        }
+        if (block == null) return;
+        var c = gm.WorldToGrid(block.transform.position);
+        for (int r = 1; r <= 4; r++)
+            for (int dx = -r; dx <= r; dx++)
+                for (int dy = -r; dy <= r; dy++)
+                {
+                    if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;
+                    var a = c + new Vector2Int(dx, dy);
+                    if (!gm.CanPlaceAt(a, item.tileWidth, item.tileHeight)) continue;
+                    if (Vector2.Distance(gm.GridToWorld(a), block.transform.position) > 1.9f) continue;
+                    if (PlaceAtCell(item, a)) LinkNearby<ResourceExtractor>(TileType.Extractor, storage);
+                    return;
+                }
+    }
+
+    private static void RailDeliver(FarmingItemData item)
+    {
+        if (CargoRails.OutpostCount <= 0) { BuildOutpost(null); return; }
+        if (item == null || !item.isCropProduct) return;
+        var seed = SeedFor(item);
+        var soilBase = SoilBaseOf(seed);
+        if (soilBase != null) TendSoilFarm(seed, soilBase);
+        else BuildOutpost(seed);
+    }
+
+    private static ItemStorage SoilBaseOf(FarmingItemData seed)
+    {
+        var soil = Soil.Of(seed);
+        if (soil == SoilType.None) return null;
+        foreach (var net in CargoRails.Networks)
+            foreach (var s in net.Storages)
+                if (CargoRails.IsOutpost(net, s) && Soil.At(s.GridPosition) == soil) return s;
+        return null;
+    }
+
+    private static readonly Vector2Int[] SoilLineSpots =
+    {
+        new(0, 3), new(-6, 0), new(6, 0), new(0, 7), new(0, -6), new(-5, 5), new(5, 5), new(-5, -5), new(5, -5),
+    };
+    private const int SoilPlotsPerLine = 20;
+
+    // 토양 전초 농장: 작물마다 파종기 + 수확기 + 밭
+    private static void TendSoilFarm(FarmingItemData seed, ItemStorage soilBase)
+    {
+        var gm = GridManager.Instance;
+        var soil = Soil.Of(seed);
+        AutoSeeder seeder = null;
+        int lines = 0;
+        foreach (var s in Tiles<AutoSeeder>(TileType.AutoSeeder))
+        {
+            if (Soil.At(s.GridPosition) != soil) continue;
+            lines++;
+            var assigned = MachineFarm.SeedOf(s);
+            if (assigned == seed) seeder = s;
+            else if (assigned == null && seeder == null) seeder = s;
+        }
+        if (seeder == null)
+        {
+            if (lines >= SoilLineSpots.Length) return;
+            PlaceAtCell(NetWorld.Item("AutoSeeder"), soilBase.GridPosition + SoilLineSpots[lines]);
+            return;
+        }
+        if (MachineFarm.SeedOf(seeder) == null || seeder.IsStarved)
+        {
+            if (Count(seed) <= 0) { Buy(seed, 12); if (Count(seed) <= 0) return; }
+            Select(seed);
+            int put = seeder.AddItem(seed, Mathf.Min(Count(seed), seeder.Capacity));
+            if (put > 0) { Inventory.Instance.ConsumeItem(seed, put); Log($"  토양 파종기에 {seed.itemName} ×{put}"); }
+            return;
+        }
+        AutoHarvester partner = null;
+        foreach (var h in Tiles<AutoHarvester>(TileType.AutoHarvester))
+            if (LinkRules.DistanceCells(h, seeder) <= h.CoverageRadiusCells / 2f) { partner = h; break; }
+        if (partner == null)
+        {
+            if (PlaceAtCell(NetWorld.Item("AutoHarvester"), seeder.GridPosition + Vector2Int.right)) LinkNearby<AutoHarvester>(TileType.AutoHarvester, soilBase);
+            return;
+        }
+        MachineFarm.CountPlots(seeder, out _, out int covered);
+        if (covered >= SoilPlotsPerLine) return;
+        int reach = Mathf.Min(seeder.CoverageRadiusCells, partner.CoverageRadiusCells);
+        for (int r = 1; r <= reach; r++)
+            for (int dx = -r; dx <= r; dx++)
+                for (int dy = -r; dy <= r; dy++)
+                {
+                    if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;
+                    var a = seeder.GridPosition + new Vector2Int(dx, dy);
+                    if (Soil.At(a) != soil || !gm.CanPlaceAt(a, 1, 1)) continue;
+                    if (GridManager.AreaDistance(partner.FootprintMin, partner.FootprintMax, a.x, a.y) > partner.CoverageRadiusCells) continue;
+                    PlaceAtCell(NetWorld.Item("PlantTile"), a);
+                    return;
+                }
+    }
+
+    private static void Research(string id)
+    {
+        var tt = TechTreeManager.Instance;
+        var node = string.IsNullOrEmpty(id) ? null : tt.GetNode(id);
+        if (node == null) { foreach (var n in tt.Nodes) if (tt.TryUpgrade(n)) break; return; }
+        if (node.IsMaxed) return;
+        int lv = node.currentLevel;
+        if (node.itemCosts != null && lv < node.itemCosts.Length && !string.IsNullOrEmpty(node.itemCosts[lv]))
+        {
+            var it = NetWorld.Item(node.itemCosts[lv]);
+            int need = node.itemAmounts[lv];
+            if (Count(it) < need) { Obtain(it, need, 0); return; }
+        }
+        if (tt.TryUpgrade(node)) Log($"  연구 {node.displayName}");
+    }
+
+    private static TileItem MachineOf(FarmingItemData item, bool unlinkedOnly)
+    {
+        foreach (var t in GridManager.Instance.GetDynamicTiles())
+            if (MachineFarm.SameMachine(t, item) && (!unlinkedOnly || !MachineFarm.LinkedToStorage(t))) return t;
+        return null;
+    }
+
+    private static bool LinkToStorage(FarmingItemData item)
+    {
+        var machine = MachineOf(item, true);
+        if (machine == null)
+        {
+            if (MachineOf(item, false) != null) return true;
+            Place(item, 0);
+            return false;
+        }
+        var storage = MachineFarm.NearestStorage(machine) ?? PlaceStorageNear(machine);
+        if (storage == null) return false;
+        GoTo(machine.transform.position + Vector3.down);
+        if (TileItem.Link(storage, machine)) Log($"  연결 {LinkRules.NameOf(machine)} - 창고");
+        return true;
+    }
+
+    private static ItemStorage PlaceStorageNear(TileItem to)
+    {
+        var item = NetWorld.Item("NormalStorage");
+        if (Count(item) <= 0) { Make(item, 1, 1); if (Count(item) <= 0) return null; }
+        var gm = GridManager.Instance;
+        var c = to.FootprintMin;
+        for (int r = 1; r < 12; r++)
+            for (int dx = -r; dx <= r; dx++)
+                for (int dy = -r; dy <= r; dy++)
+                {
+                    if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;
+                    var a = c + new Vector2Int(dx, dy);
+                    if (!gm.CanPlaceAt(a, item.tileWidth, item.tileHeight)) continue;
+                    Select(item);
+                    GoTo(gm.GridToWorld(a) + Vector3.down);
+                    tryPlace.Invoke(PlayerTileController.Instance, new object[] { a });
+                    if (gm.GetTile(a) is ItemStorage s) { Log("  설치 창고 (설비 곁)"); return s; }
+                }
+        return null;
+    }
+
+    private static bool autoLoading;
+
+    // 창고 짐으로 셔틀 혼자 보내기
+    private static void AutoDepart()
+    {
+        var svc = ShuttleService.Instance;
+        if (svc == null) return;
+        var padItem = ShuttleService.PadItem;
+        if (MachineFarm.LinkedCount(padItem) <= 0) { LinkToStorage(padItem); return; }
+        foreach (var s in svc.Shuttles)
+        {
+            var pad = ShuttleService.PadOf(s);
+            if (s.away || !MachineFarm.LinkedToStorage(pad)) continue;
+            var storage = MachineFarm.LinkedStorage(pad);
+            foreach (var l in s.cargo)
+            {
+                if (l.Missing <= 0) continue;
+                var it = NetWorld.Item(l.item);
+                if (it == null) continue;
+                int have = Count(it);
+                if (have < l.Missing) { Obtain(it, l.Missing, 0); return; }
+                int put = storage.AddItem(it, l.Missing);
+                if (put > 0) { Inventory.Instance.ConsumeItem(it, put); Log($"  창고로 {it.itemName} ×{put} (셔틀 짐)"); }
+            }
+            return;
+        }
+    }
+
+    // 작물 종류만큼 파종기 + 씨앗
+    private static void MachineLines(int want)
+    {
+        if (Tiles<AutoHarvester>(TileType.AutoHarvester).Count == 0) { Place(NetWorld.Item("AutoHarvester"), 0); return; }
+        var seeders = Tiles<AutoSeeder>(TileType.AutoSeeder);
+        if (seeders.Count < want && MachineFarm.AssignedKinds() >= seeders.Count) { Place(NetWorld.Item("AutoSeeder"), 0); return; }
+        foreach (var s in seeders)
+        {
+            if (MachineFarm.SeedOf(s) != null) continue;
+            var seed = NextLineSeed();
+            if (seed == null) return;
+            if (Count(seed) <= 0) { Buy(seed, 6); if (Count(seed) <= 0) return; }
+            Select(seed);
+            int n = Mathf.Min(Count(seed), s.Capacity);
+            int put = s.AddItem(seed, n);
+            if (put > 0) { Inventory.Instance.ConsumeItem(seed, put); Log($"  파종기에 {seed.itemName} ×{put}"); }
+            return;
+        }
+        if (MachineFarm.CropKinds < want) EnsurePlotsForSeeders();
+    }
+
+    private const int MaxLines = 14;
+
+    // 사람처럼 필요한 작물마다 파종기 하나 더
+    private static bool AddLine(FarmingItemData seed)
+    {
+        var soilBase = SoilBaseOf(seed);
+        if (soilBase != null) { TendSoilFarm(seed, soilBase); return true; }
+        var seeders = Tiles<AutoSeeder>(TileType.AutoSeeder);
+        if (seeders.Count == 0) return false;
+        foreach (var a in seeders)
+        {
+            if (MachineFarm.SeedOf(a) != seed) continue;
+            if (a.IsStarved && Count(seed) > 0)
+            {
+                int back = a.AddItem(seed, Mathf.Min(Count(seed), a.Capacity));
+                if (back > 0) { Inventory.Instance.ConsumeItem(seed, back); Log($"  멈춘 줄에 씨앗 {seed.itemName} ×{back}"); }
+            }
+            return true;
+        }
+        var idle = seeders.Find(a => MachineFarm.SeedOf(a) == null);
+        if (idle == null)
+        {
+            if (seeders.Count >= MaxLines) return false;
+            Place(NetWorld.Item("AutoSeeder"), 0);
+            return true;
+        }
+        if (Count(seed) <= 0) return true;
+        Select(seed);
+        int put = idle.AddItem(seed, Mathf.Min(Count(seed), idle.Capacity));
+        if (put > 0) { Inventory.Instance.ConsumeItem(seed, put); Log($"  작물 줄 추가 {seed.itemName} ×{put}"); }
+        return true;
+    }
+
+    private static float nextHarvesterAt;
+
+    // 새 기계 연결, 수확이 밀리면 수확기 추가
+    private static void TendMachines()
+    {
+        if (Tiles<ItemStorage>(TileType.Storage).Count > 0)
+        {
+            foreach (var h in Tiles<AutoHarvester>(TileType.AutoHarvester)) if (!MachineFarm.LinkedToStorage(h)) { LinkToStorage(NetWorld.Item("AutoHarvester")); break; }
+        }
+        var harvesters = Tiles<AutoHarvester>(TileType.AutoHarvester);
+        if (harvesters.Count == 0 || harvesters.Count >= 8 || Time.time < nextHarvesterAt) return;
+        int backlog = 0;
+        foreach (var p in Plots()) if (p.SoilKind == SoilType.None && p.CurrentState == PlantTile.PlantState.ReadyToHarvest && CoveredByHarvester(p)) backlog++;
+        if (backlog < 12) return;
+        nextHarvesterAt = Time.time + 60f;
+        Place(NetWorld.Item("AutoHarvester"), 0);
+    }
+
+    private static FarmingItemData NextLineSeed()
+    {
+        var used = new HashSet<FarmingItemData>();
+        foreach (var s in Tiles<AutoSeeder>(TileType.AutoSeeder)) { var a = MachineFarm.SeedOf(s); if (a != null) used.Add(a); }
+        foreach (var it in GameDataRegistry.FindAll<FarmingItemData>())
+        {
+            if (it == null || it.itemType != FarmingItemType.Seed || it.seedData == null || used.Contains(it)) continue;
+            if (it.unlockCoreLevel > CenterCore.CurrentLevel || !ShopManager.Instance.IsPurchasable(it)) continue;
+            return it;
+        }
+        return null;
+    }
+
+    private static void EnsurePlotsForSeeders()
+    {
+        foreach (var s in Tiles<AutoSeeder>(TileType.AutoSeeder))
+        {
+            MachineFarm.CountPlots(s, out int near, out int covered);
+            if (covered > 0) continue;
+            if (near > 0) { Place(NetWorld.Item("AutoHarvester"), 0); return; }
+            MakePlots(2);
+            return;
+        }
+    }
+
+    // 창고에 재료 넣어 주방 혼자 요리
+    private static void AutoDish()
+    {
+        var kitchenItem = NetWorld.Item("Item_CatKitchen");
+        var kitchens = Tiles<CatKitchen>(TileType.Kitchen);
+        var linked = kitchens.Find(k => MachineFarm.LinkedToStorage(k));
+        if (linked == null) { LinkToStorage(kitchenItem); return; }
+        if (linked.Recipe == null)
+        {
+            var r = CatKitchen.FindRecipe("Item_StarJam") ?? CatKitchen.Menu()[0];
+            if (!linked.SetRecipe(r)) return;
+            Log($"  주방 메뉴 {r.outputItem.itemName}");
+        }
+        var storage = MachineFarm.LinkedStorage(linked);
+        foreach (var ing in linked.Recipe.ingredients)
+        {
+            if (ing.item == null || storage.GetCount(ing.item) + linked.GetInput(ing.item) >= ing.amount * 2) continue;
+            int need = ing.amount * 4;
+            if (Count(ing.item) < need) { Obtain(ing.item, need, 0); return; }
+            int put = storage.AddItem(ing.item, need);
+            if (put > 0) Inventory.Instance.ConsumeItem(ing.item, put);
+        }
+    }
+
+    private static void Stock(FarmingItemData item, int want)
+    {
+        if (item == null) return;
+        Obtain(item, want - MachineFarm.InStorages(item), 0);
+    }
+
+    // 가방과 달리 창고엔 봇이 안 닿으니 씨앗 빼고 가져옴
+    private static void SweepStorages()
+    {
+        var qm = QuestManager.Instance;
+        autoLoading = false;
+        var keep = new HashSet<FarmingItemData>();
+        if (qm?.ActiveObjectives != null)
+            foreach (var o in qm.ActiveObjectives)
+            {
+                if (o.IsComplete) continue;
+                if (o.type == QuestObjectiveType.AutoDepart)
+                {
+                    autoLoading = true;
+                    foreach (var s in ShuttleService.Instance.Shuttles)
+                        foreach (var l in s.cargo) keep.Add(NetWorld.Item(l.item));
+                }
+                if (o.type == QuestObjectiveType.AutoDish)
+                    foreach (var k in Tiles<CatKitchen>(TileType.Kitchen))
+                        if (k.Recipe != null && MachineFarm.LinkedToStorage(k))
+                            foreach (var ing in k.Recipe.ingredients) keep.Add(ing.item);
+            }
+        var buf = new List<TileItem>();
+        GridManager.Instance.CollectTiles(TileType.Storage, buf);
+        foreach (var t in buf)
+        {
+            if (t is not ItemStorage st || st.IsGhost) continue;
+            // 전초 창고는 레일이 실어 옴
+            if (CargoRails.CellsFromCore(st) >= CargoRails.OutpostCells) continue;
+            foreach (var it in new List<FarmingItemData>(st.StockedItems))
+            {
+                if (it == null || it.itemType == FarmingItemType.Seed || keep.Contains(it)) continue;
+                int n = st.RemoveItem(it, 9999);
+                if (n > 0) Inventory.Instance.AddItem(it, n);
+            }
+        }
+    }
+
+    // 셔틀 짐을 3분 안에 채울 만큼의 밭
+    private static int DemandPlots()
+    {
+        var svc = ShuttleService.Instance;
+        if (svc == null) return 0;
+        float plots = 0f;
+        foreach (var s in svc.Shuttles)
+        {
+            if (s.away) continue;
+            foreach (var l in s.cargo)
+            {
+                var it = NetWorld.Item(l.item);
+                var seed = it != null ? SeedFor(it) : null;
+                if (seed == null) continue;
+                plots += Mathf.Max(0, l.Missing - Count(it)) * seed.seedData.TotalGrowthSeconds / 180f;
+            }
+        }
+        return Mathf.Min(MaxBotPlots, Mathf.CeilToInt(plots));
+    }
+
+    private const int MaxBotPlots = 400;
+    private const int PlotsPerLine = 12;
+    private const int CropBuffer = 200;
+
+    private static bool SeederCovers(PlantTile p)
+    {
+        if (!CoveredByHarvester(p)) return false;
+        foreach (var s in Tiles<AutoSeeder>(TileType.AutoSeeder))
+            if (MachineFarm.SeedOf(s) != null
+                && GridManager.AreaDistance(s.FootprintMin, s.FootprintMax, p.GridPosition.x, p.GridPosition.y) <= s.CoverageRadiusCells)
+                return true;
+        return false;
+    }
+
     private static void AutoFarm()
     {
+        if (Tiles<AutoSeeder>(TileType.AutoSeeder).Count > 0) MachineLines(1);
         bool near = false;
         foreach (var h in Tiles<AutoHarvester>(TileType.AutoHarvester))
             foreach (var p in Plots())
@@ -333,6 +927,8 @@ public static class WishPlaytestBot
                 case CoreRequirementType.Orders:
                 case CoreRequirementType.Residents:     Shuttles(0); return;
                 case CoreRequirementType.Coins:         EarnCoins(); return;
+                case CoreRequirementType.MachineCrops:  MachineLines(r.amount); Shuttles(0); return;
+                case CoreRequirementType.Outposts:      BuildOutpost(null); Shuttles(0); return;
             }
         }
     }
@@ -345,20 +941,83 @@ public static class WishPlaytestBot
         nextChores = Time.time + 2f;
 
         HarvestAll();
+        SweepStorages();
+        TendMachines();
         foreach (var s in Tiles<Smelter>(TileType.Smelter))
             if (s.OutputCount > 0) { int n = s.TakeOutput(999, out var it); if (n > 0) Inventory.Instance.AddItem(it, n); }
         foreach (var k in Tiles<CatKitchen>(TileType.Kitchen))
-            if (k.OutputCount > 0) { int n = k.TakeOutput(999, out var it); if (n > 0) Inventory.Instance.AddItem(it, n); }
+            if (k.OutputCount > 0 && !MachineFarm.LinkedToStorage(k)) { int n = k.TakeOutput(999, out var it); if (n > 0) Inventory.Instance.AddItem(it, n); }
         foreach (var c in Tiles<Composter>(TileType.Composter))
             if (c.OutputCount > 0) { int n = c.TakeOutput(999); if (n > 0) Inventory.Instance.AddItem(NetWorld.Item("Item_Compost"), n); }
         var svc = ShuttleService.Instance;
-        if (svc != null)
+        if (svc != null && !autoLoading)
             foreach (var s in new List<ShuttleSave>(svc.Shuttles))
                 if (ShuttleService.CanComplete(s)) LoadShuttle(s);
-        int wantPlots = Mathf.Max(10 + 5 * (CenterCore.CurrentLevel - 1), Mathf.CeilToInt(NextPlotRequirement() * PlotFactor));
+        int wantPlots = Mathf.Max(10 + 5 * (CenterCore.CurrentLevel - 1), Mathf.Max(Mathf.CeilToInt(NextPlotRequirement() * PlotFactor), DemandPlots()));
+        wantPlots = Mathf.Min(MaxBotPlots, Mathf.Max(wantPlots, Tiles<AutoSeeder>(TileType.AutoSeeder).Count * PlotsPerLine));
         if (PlotCount() < wantPlots) MakePlots(Mathf.Min(4, wantPlots - PlotCount()));
         PlantSmart();
         SellSurplus();
+        SpendSurplus();
+    }
+
+    // 사람처럼 남는 코인을 마을에 씀: 축제, 장식
+    public static bool SpendCoins = true;
+    private static readonly int[] CharmByLevel = { 0, 0, 6, 16, 30, 60, 110, 160 };
+
+    private static void SpendSurplus()
+    {
+        if (!SpendCoins) return;
+        long reserve = NextFunds() + 2000 * CenterCore.CurrentLevel;
+        if (Coins() > reserve + TownLife.FestivalCost * 2 && TownLife.FestivalBlock() == null) HoldFestival();
+        int want = CharmByLevel[Mathf.Clamp(CenterCore.CurrentLevel, 0, CharmByLevel.Length - 1)];
+        if (TownLife.Charm < want && Coins() > reserve) Decorate(want, reserve);
+        // 남는 코인이 셔틀 여러 번 좌석값을 넘으면 좌석을 늘림
+        if (TownLife.SeatsUnlocked && TownLife.Instance != null)
+        {
+            long spare = Coins() - reserve;
+            int seats = spare > TownLife.SeatCost * 3 * 6 ? 3 : spare > TownLife.SeatCost * 4 ? 1 : 0;
+            if (seats != TownLife.ExtraSeats) { TownLife.Instance.SetSeats(seats); Log($"  이주 지원 좌석 +{seats}"); }
+        }
+    }
+
+    private static long NextFunds()
+    {
+        var next = CenterCore.Current != null ? CenterCore.Current.NextStage : null;
+        if (next == null) return 0;
+        foreach (var r in next.requirements)
+            if (r.type == CoreRequirementType.Coins) return CoreProgress.Target(r);
+        return 0;
+    }
+
+    private static void HoldFestival()
+    {
+        long cost = TownLife.FestivalCost;
+        TownLife.Instance?.Hold();
+        if (TownLife.FestivalActive) Log($"  마을 축제 ({cost:N0}코인)");
+    }
+
+    // 살 수 있는 가장 매력 좋은 장식부터 사서 놓기
+    private static void Decorate(int targetCharm, long keep = 0)
+    {
+        var inv = Inventory.Instance;
+        for (int i = 0; i < inv.SlotCount; i++)
+        {
+            var s = inv.GetSlot(i);
+            if (s == null || s.IsEmpty || s.Item.charm <= 0) continue;
+            var deco = s.Item;
+            if (Place(deco, 1)) Log($"  장식 {deco.itemName} (매력 ★{TownLife.Charm})");
+            return;
+        }
+        if (TownLife.Charm >= targetCharm) return;
+        var shop = ShopManager.Instance;
+        FarmingItemData best = null;
+        foreach (var it in shop.CurrentStock)
+        {
+            if (it == null || it.charm <= 0 || !shop.IsPurchasable(it) || Coins() - shop.BuyPrice(it) < keep) continue;
+            if (best == null || it.charm > best.charm) best = it;
+        }
+        if (best != null && shop.TryBuy(best, 1)) Log($"  구매 {best.itemName} ({shop.BuyPrice(best):N0}코인)");
     }
 
     private static readonly MethodInfo tryPlant   = typeof(PlayerTileController).GetMethod("TryPlantSeed", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -402,6 +1061,8 @@ public static class WishPlaytestBot
         foreach (var p in Plots())
         {
             if (p.CurrentState != PlantTile.PlantState.Empty || (!p.IsPowered && seed.seedData.trait != CropTrait.Shade)) continue;
+            if (p.SoilKind != SoilType.None && p.SoilKind != Soil.Of(seed)) continue;
+            if (seedItem == null && SeederCovers(p)) continue; // 콕 집은 씨앗은 어디든 손으로
             Select(seed);
             tryPlant.Invoke(PlayerTileController.Instance, new object[] { p.GridPosition });
             return true;
@@ -418,7 +1079,7 @@ public static class WishPlaytestBot
     {
         foreach (var p in Plots())
         {
-            if (p.CurrentState != PlantTile.PlantState.Empty) continue;
+            if (p.CurrentState != PlantTile.PlantState.Empty || SeederCovers(p) || p.SoilKind != SoilType.None) continue;
             var seed = WantedSeed();
             if (seed == null) return;
             if (!p.IsPowered && seed.seedData.trait != CropTrait.Shade) continue;
@@ -450,7 +1111,20 @@ public static class WishPlaytestBot
         if (qm?.ActiveObjectives != null)
             foreach (var o in qm.ActiveObjectives)
             {
-                if (o.IsComplete || o.targetItem == null) continue;
+                if (o.IsComplete) continue;
+                if (o.type == QuestObjectiveType.UpgradeTech)
+                {
+                    var n = TechTreeManager.Instance.GetNode(o.targetTechNodeId);
+                    if (n != null && !n.IsMaxed && n.itemCosts != null && n.currentLevel < n.itemCosts.Length)
+                        Want(NetWorld.Item(n.itemCosts[n.currentLevel]), n.itemAmounts[n.currentLevel]);
+                }
+                if (o.type == QuestObjectiveType.AutoDish)
+                {
+                    var linked = Tiles<CatKitchen>(TileType.Kitchen).Find(k => MachineFarm.LinkedToStorage(k));
+                    if (linked != null && linked.Recipe != null)
+                        foreach (var ing in linked.Recipe.ingredients) Want(ing.item, ing.amount * 4);
+                }
+                if (o.targetItem == null) continue;
                 if (o.targetItem.isCropProduct) Want(o.targetItem, o.targetAmount);
                 var r = Recipe(o.targetItem);
                 if (r != null) foreach (var ing in r.ingredients) if (ing.item != null && ing.item.isCropProduct) Want(ing.item, ing.amount * 2);
@@ -506,6 +1180,7 @@ public static class WishPlaytestBot
         var s = SeedFor(crop);
         if (s == null) return;
         if (Count(s) <= 0) Buy(s, plots);
+        if (AddLine(s)) return;
         if (!Plant(s) && Count(s) > 0 && !HasEmptyPlot()) MakePlots(2);
     }
 
@@ -532,9 +1207,12 @@ public static class WishPlaytestBot
         }
     }
 
+    // 메가 기계: 메가 ← 고급 ← 기본 ← 합금 ← 주괴 ← 광석
+    private const int MaxDepth = 10;
+
     private static bool Obtain(FarmingItemData item, int need, int depth)
     {
-        if (item == null || depth > 6) return false;
+        if (item == null || depth > MaxDepth) return false;
         if (Count(item) >= need) return true;
         var r = Recipe(item);
         if (r != null && r.IsKitchenRecipe) { Cook(r, need, depth + 1); return false; }
@@ -549,7 +1227,7 @@ public static class WishPlaytestBot
 
     private static bool Make(FarmingItemData item, int need, int depth)
     {
-        if (item == null || depth > 6) return false;
+        if (item == null || depth > MaxDepth) return false;
         if (Count(item) >= need) return true;
         if (item.name == "Item_Compost") { Compost(need - Count(item), depth + 1); return false; }
         var r = Recipe(item);
@@ -599,7 +1277,7 @@ public static class WishPlaytestBot
 
     private static bool Place(FarmingItemData item, int depth)
     {
-        if (item == null || depth > 6) return false;
+        if (item == null || depth > MaxDepth) return false;
         if (Count(item) <= 0) { Make(item, 1, depth + 1); if (Count(item) <= 0) return false; }
         var anchor = FindSpot(item);
         if (anchor == null) { Log("  자리 없음: " + item.itemName); return false; }
@@ -631,7 +1309,7 @@ public static class WishPlaytestBot
                     if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;
                     var a = center + new Vector2Int(dx, dy);
                     if (!plot && !farmMachine && !gm.CanPlaceAt(a - Vector2Int.one, w + 2, h + 2)) continue;
-                    if (!gm.CanPlaceAt(a, w, h)) continue;
+                    if (!gm.CanPlaceAt(a, w, h, item.tilePrefab)) continue;
                     if (em != null && !em.HasEnergy(a, a + new Vector2Int(w - 1, h - 1))) continue;
                     return a;
                 }
@@ -725,7 +1403,7 @@ public static class WishPlaytestBot
         var kitchens = Tiles<CatKitchen>(TileType.Kitchen);
         if (kitchens.Count == 0) { Place(NetWorld.Item("Item_CatKitchen"), 0); return; }
         foreach (var k in kitchens)
-            if (k.OutputCount > 0) { int n = k.TakeOutput(999, out var it); if (n > 0) Inventory.Instance.AddItem(it, n); }
+            if (k.OutputCount > 0 && !MachineFarm.LinkedToStorage(k)) { int n = k.TakeOutput(999, out var it); if (n > 0) Inventory.Instance.AddItem(it, n); }
         wantedAt[r] = Time.time;
         CatKitchen kitchen = kitchens.Find(k => k.Recipe == r) ?? kitchens.Find(k => k.Recipe == null)
                              ?? kitchens.Find(k => k.CanChangeRecipe && !Wanted(k.Recipe) && !cooking.Contains(k.Recipe));
@@ -830,7 +1508,8 @@ public static class WishPlaytestBot
             if (s == null || s.IsEmpty) continue;
             if (s.Item.isCropProduct)
             {
-                int keep = KeepFor(s.Item);
+                // 기계 농장 시기엔 다음 셔틀 짐으로 쌓아 둠
+                int keep = force || CenterCore.CurrentLevel < 4 ? KeepFor(s.Item) : Mathf.Max(KeepFor(s.Item), CropBuffer);
                 int extra = s.Count - keep;
                 if (extra > (force || full ? 0 : 10)) shop.TrySell(s.Item, extra);
             }
@@ -875,11 +1554,15 @@ public static class WishPlaytestBot
 
     private static Vector3 FarmCenter()
     {
-        var plots = Plots();
-        if (plots.Count == 0) return PlayerTileController.Instance.transform.position;
         Vector3 c = Vector3.zero;
-        foreach (var p in plots) c += p.transform.position;
-        return c / plots.Count;
+        int n = 0;
+        foreach (var p in Plots())
+        {
+            if (p.SoilKind != SoilType.None) continue;
+            c += p.transform.position;
+            n++;
+        }
+        return n > 0 ? c / n : PlayerTileController.Instance.transform.position;
     }
 
     private static long Coins()

@@ -26,6 +26,6 @@ MonoBehaviour:
   dropAmountMax: 1
   minToolGrade: 1
   dropInterval: 0.4
-  maxResources: 50
+  maxResources: 200
   scaleMax: 1
   scaleMin: 0.4

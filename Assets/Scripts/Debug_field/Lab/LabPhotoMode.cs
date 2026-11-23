@@ -17,6 +17,14 @@ public class LabPhotoMode : LabExperiment
 
     private static string Folder => System.IO.Path.Combine(Application.persistentDataPath, "Screenshots");
 
+    private const string KeyGuide = "사진 모드  ·  [Space] 찰칵  ·  휠 확대 · 축소  ·  [O]/Esc 나가기";
+    private const string PadGuide = "사진 모드  ·  X 찰칵  ·  R3 확대 · 축소  ·  B 나가기";
+
+    public static bool HidesHud { get; private set; }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStatics() => HidesHud = false;
+
     private bool active;
     private int  taken;
     private readonly List<Canvas> hidden = new();
@@ -26,9 +34,9 @@ public class LabPhotoMode : LabExperiment
 
     protected override void LocalTick()
     {
-        if (active && EscapeRouter.TryConsume(EscapeRouter.EscPressed)) { SetActive(false); return; }
+        if (active && EscapeRouter.TryConsume(EscapeRouter.CancelPressed)) { SetActive(false); return; }
         if (!TextInputFocus.Active && GameInput.GetKeyDown(KeyCode.O)) { SetActive(!active); return; }
-        if (active && !TextInputFocus.Active && GameInput.GetKeyDown(KeyCode.Space)) StartCoroutine(Capture());
+        if (active && !TextInputFocus.Active && (GameInput.GetKeyDown(KeyCode.Space) || Pad.ActiveDown(PadButton.X))) StartCoroutine(Capture());
     }
 
     private void SetActive(bool on)
@@ -36,6 +44,7 @@ public class LabPhotoMode : LabExperiment
         if (on == active) return;
         if (on && PlayerTileController.IsPauseMenuOpen()) return;
         active = on;
+        HidesHud = on;
         if (on)
         {
             LabPanelUI.CloseIfOpen();
@@ -43,6 +52,7 @@ public class LabPhotoMode : LabExperiment
             foreach (var c in FindObjectsByType<Canvas>(FindObjectsSortMode.None))
                 if (c.isRootCanvas && c.enabled && c.renderMode == RenderMode.ScreenSpaceOverlay) { c.enabled = false; hidden.Add(c); }
             BuildHint();
+            hint.text = Pad.Active ? PadGuide : KeyGuide;
             hintRoot.SetActive(true);
             Sfx.Play(SfxId.UiOpen);
         }
@@ -66,7 +76,8 @@ public class LabPhotoMode : LabExperiment
         taken++;
         if (!active) yield break;
         hintRoot.SetActive(true);
-        hint.text = $"찰칵! 저장했어요 ({taken}장)  ·  [Space] 또 찍기  ·  [O]/Esc 나가기";
+        hint.text = Pad.Active ? $"찰칵! 저장했어요 ({taken}장)  ·  X 또 찍기  ·  B 나가기"
+                               : $"찰칵! 저장했어요 ({taken}장)  ·  [Space] 또 찍기  ·  [O]/Esc 나가기";
         Sfx.Play(SfxId.UiConfirm);
         for (float t = 0f; t < 0.35f; t += Time.unscaledDeltaTime)
         {
@@ -90,7 +101,7 @@ public class LabPhotoMode : LabExperiment
         flash.color = Color.clear;
         flash.raycastTarget = false;
 
-        var pill = CuteUIKit.Pill(hintRoot.transform, "사진 모드  ·  [Space] 찰칵  ·  휠 확대 · 축소  ·  [O]/Esc 나가기",
+        var pill = CuteUIKit.Pill(hintRoot.transform, KeyGuide,
                                   new Color(1f, 0.97f, 0.92f, 0.9f), CuteUIKit.Cocoa, 13f, 14, new RectOffset(16, 16, 6, 6), out hint, fitSelf: true);
         pill.anchorMin = pill.anchorMax = pill.pivot = new Vector2(0.5f, 0f);
         pill.anchoredPosition = new Vector2(0f, 24f);

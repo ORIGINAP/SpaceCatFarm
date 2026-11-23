@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a888e0bced5bddb42928b3c84198ab7f, type: 3}
+  m_Name: C1_06b_Purify
+  m_EditorClassIdentifier: Assembly-CSharp::QuestDefinition
+  questName: "\uB545 \uC815\uD654\uD558\uAE30"
+  description: "\uC815\uD654\uD0D1\uC740 \uB458\uB808 \uB545\uC758 \uC624\uC5FC\uC744
+    \uAC77\uC5B4 \uB0B4\uC694. \uC624\uC5FC\uB41C \uB545\uC5D0\uB3C4 \uC138\uC6B8
+    \uC218 \uC788\uC5B4\uC11C, \uC815\uD654\uB41C \uB545\uC744 \uB113\uD600 \uAC00\uBA70
+    \uAC1C\uCC99\uD574\uC694."
+  talk: "\uBCF4\uB78F\uBE5B \uC548\uAC1C \uBC16\uC740 \uC624\uC5FC\uB41C \uB545\uC774\uB77C
+    \uC544\uBB34\uAC83\uB3C4 \uBABB \uC9C0\uC5B4\uC694. \uCE94 \uAD11\uC11D\uC73C\uB85C
+    \uC815\uD654\uD0D1\uC744 \uC138\uC6CC\uC11C \uB545\uC744 \uB418\uC0B4\uB824\uC694!"
+  hint: "[\uC81C\uC791](C) \u2192 \uC815\uD654\uD0D1 \uB9CC\uB4E4\uAE30 \u2192 \uD558\uB298\uC0C9
+    \uD14C\uB450\uB9AC \uBC14\uB85C \uBC16\uC5D0 \uC124\uCE58"
+  padHint: "\uC2ED\uC790\uD0A4 \u2191 \uC81C\uC791 \u2192 \uC815\uD654\uD0D1 \u2192
+    \uD14C\uB450\uB9AC \uBC16\uC5D0\uC11C RT\uB85C \uC124\uCE58"
+  tutorialTip: "\uC815\uD654\uD0D1\uC744 \uC138\uC6B0\uBA74 \uC0AC\uAC01\uD615\uC73C\uB85C
+    \uB545\uC774 \uD37C\uC9C0\uB4EF \uC815\uD654\uB3FC\uC694.\n\uC13C\uD130\uCF54\uC5B4\uAC00
+    \uBC1C\uC804\uD560 \uB54C\uB9C8\uB2E4 \uCF54\uC5B4\uAC00 \uC815\uD654\uD558\uB294
+    \uB545\uB3C4 \uB113\uC5B4\uC838\uC694."
+  objectives:
+  - type: 22
+    targetItem: {fileID: 0}
+    targetTechNodeId: 
+    targetAmount: 1
+  rewards:
+  - item: {fileID: 11400000, guid: fd11cb849b8d402459660db5e3e1271e, type: 2}
+    amount: 1
+  - item: {fileID: 11400000, guid: 585e59da51486264399bbfecf3a1c2a6, type: 2}
+    amount: 6
+  - item: {fileID: 11400000, guid: b0306d08f44f3da4fbbc010aad1897fe, type: 2}
+    amount: 4
+  rewardCoins: 50

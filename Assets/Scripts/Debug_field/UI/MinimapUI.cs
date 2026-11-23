@@ -15,6 +15,7 @@ public class MinimapUI : MonoBehaviour
     private const float ObjectRefresh  = 1f;
     private const float UploadInterval = 0.1f;
     private const int   StagingSize    = 128;
+    private static readonly Color32 RailMapColor = new(146, 134, 164, 255);
 
     private static MinimapUI instance;
 
@@ -31,6 +32,7 @@ public class MinimapUI : MonoBehaviour
     private RectTransform   playerDot;
     private TextMeshProUGUI caption;
     private bool            big;
+    private bool            captionForPad;
     private bool            hidden;
 
     private Texture2D  texture;
@@ -39,7 +41,7 @@ public class MinimapUI : MonoBehaviour
     private Color32[]  objects;
     private Color32[]  objectsScratch;
     private int        w, h, minX, minY;
-    private int        generation = -1, gridVersion = -1, blockCount = -1;
+    private int        generation = -1, gridVersion = -1, blockCount = -1, linkVersion = -1;
     private float      nextObjects, nextUpload;
     private bool       uploadPending, fullUpload;
     private RectInt    dirtyPx;
@@ -82,8 +84,21 @@ public class MinimapUI : MonoBehaviour
         var ptc = PlayerTileController.Instance;
         bool ready = gm != null && ptc != null && ExploredMap.Width > 0;
 
-        if (ready && InputManager.Instance != null && InputManager.Instance.MinimapButton && !PlayerTileController.IsPauseMenuOpen())
-            SetHidden(!hidden);
+        var im = InputManager.Instance;
+        if (ready && im != null && !PlayerTileController.IsPauseMenuOpen())
+        {
+            if (im.MinimapHideButton) SetHidden(!hidden);
+            else if (im.MinimapButton)
+            {
+                if (hidden) SetHidden(false);
+                else Toggle();
+            }
+        }
+        if (captionForPad != global::Pad.Active)
+        {
+            captionForPad = global::Pad.Active;
+            caption.text  = Caption(big);
+        }
         if (ready && !TextInputFocus.Active && GameInput.GetKeyDown(KeyCode.M))
         {
             if (hidden) SetHidden(false);
@@ -106,7 +121,7 @@ public class MinimapUI : MonoBehaviour
         if (Time.unscaledTime >= nextObjects)
         {
             nextObjects = Time.unscaledTime + ObjectRefresh;
-            if (gm.Version != gridVersion || ResourceBlock.Active.Count != blockCount)
+            if (gm.Version != gridVersion || ResourceBlock.Active.Count != blockCount || TileItem.LinkVersion != linkVersion)
                 RefreshObjects(gm);
         }
 
@@ -190,6 +205,8 @@ public class MinimapUI : MonoBehaviour
         var map = terrainMap;
         if (map != null)
         {
+            var soil = map.SoilAtVertex(vx, vy);
+            if (soil != SoilType.None) return Soil.MapColor(soil);
             if (map.Has(TerrainMap.Layer.Chasm, vx, vy)) return palette.chasm;
             if (map.Has(TerrainMap.Layer.Mesa,  vx, vy)) return palette.mesa;
             if (map.Has(TerrainMap.Layer.Path,  vx, vy)) return palette.path;
@@ -220,9 +237,28 @@ public class MinimapUI : MonoBehaviour
             var color = tile is PlantTile ? palette.plant : palette.facility;
             foreach (var c in tile.OccupiedCells) SetObject(into, c.x, c.y, color);
         }
+        DrawRails(into);
         var core = CenterCore.Current;
         if (core != null && core.OccupiedCells != null)
             foreach (var c in core.OccupiedCells) SetObject(into, c.x, c.y, palette.core);
+    }
+
+    // 레일 구간을 선으로
+    private void DrawRails(Color32[] into)
+    {
+        linkVersion = TileItem.LinkVersion;
+        foreach (var net in CargoRails.Networks)
+            foreach (var rail in net.Rails)
+                foreach (var link in rail.Links)
+                {
+                    Vector2 a = rail.GridPosition, b = link.GridPosition;
+                    int steps = Mathf.CeilToInt(Vector2.Distance(a, b));
+                    for (int s = 0; s <= steps; s++)
+                    {
+                        var p = Vector2.Lerp(a, b, steps > 0 ? (float)s / steps : 0f);
+                        SetObject(into, Mathf.RoundToInt(p.x), Mathf.RoundToInt(p.y), RailMapColor);
+                    }
+                }
     }
 
     private void SetObject(Color32[] into, int x, int y, Color32 color)
@@ -394,7 +430,8 @@ public class MinimapUI : MonoBehaviour
     }
 
     private static string Caption(bool big)
-        => MobileMode.Active ? (big ? "눌러서 작게 보기" : "눌러서 크게 보기")
+        => global::Pad.Active ? (big ? "BACK 작게 · 꾹 끄기" : "BACK 크게 · 꾹 끄기")
+         : MobileMode.Active ? (big ? "눌러서 작게 보기" : "눌러서 크게 보기")
                              : (big ? "[M] 작게 보기" : "[M] 크게 보기");
 
     private void Build()
@@ -454,26 +491,26 @@ public class MinimapUI : MonoBehaviour
         public static Palette For(WorldTheme theme) => theme == WorldTheme.Tundra
             ? new Palette
             {
-                ground = Hex(0xD7E2EE), patch = Hex(0xECF2F8), path = Hex(0xBBD5EA), chasm = Hex(0x1C3649), mesa = Hex(0x8FA8BE),
-                fog = Hex(0x2B2233), plant = Hex(0x3E9E4A), facility = Hex(0x5A4A6A), core = Hex(0xFFC93C), snowy = true,
+                ground = Hex(0xD7E4F2), patch = Hex(0xECF3FA), path = Hex(0xBAD8F0), chasm = Hex(0x224158), mesa = Hex(0x91AEC7),
+                fog = Hex(0x5D5468), plant = Hex(0x4DA458), facility = Hex(0x635275), core = Hex(0xFEC946), snowy = true,
             }
             : new Palette
             {
-                ground = Hex(0xC37A51), patch = Hex(0xD0915E), path = Hex(0xAB6743), chasm = Hex(0x241210), mesa = Hex(0x7E4A33),
-                fog = Hex(0x2B2233), plant = Hex(0x3E9E4A), facility = Hex(0xFFF6E6), core = Hex(0xFFD24A),
+                ground = Hex(0xD28C5F), patch = Hex(0xDCA06B), path = Hex(0xBE7B54), chasm = Hex(0x432F2B), mesa = Hex(0x966248),
+                fog = Hex(0x5D5468), plant = Hex(0x4DA458), facility = Hex(0xFFF6E6), core = Hex(0xFFD453),
             };
 
         public Color32 Ore(ResourceData data)
         {
             switch (data != null ? data.name : "")
             {
-                case "RD_Copper":   return Hex(0xFFB02E);
-                case "RD_Iron":     return Hex(0xA23B4B);
-                case "RD_Lithium":  return Hex(0xD08FE4);
-                case "RD_Titanium": return Hex(0x4F86E8);
-                case "RD_Uranium":  return Hex(0xC6F03C);
-                case "RD_Aluminum": return snowy ? Hex(0x7A838F) : Hex(0xAAB6C8);
-                case "RD_Diamond":  return snowy ? Hex(0x44A1B0) : Hex(0x5FE0F5);
+                case "RD_Copper":   return Hex(0xFDB03D);
+                case "RD_Iron":     return Hex(0xA74756);
+                case "RD_Lithium":  return Hex(0xD093E3);
+                case "RD_Titanium": return Hex(0x598CE7);
+                case "RD_Uranium":  return Hex(0xC4EC47);
+                case "RD_Aluminum": return snowy ? Hex(0x7E8793) : Hex(0xACB8C9);
+                case "RD_Diamond":  return snowy ? Hex(0x4AA4B2) : Hex(0x67DEF2);
                 default:            return Hex(0xA8A8B8);
             }
         }
